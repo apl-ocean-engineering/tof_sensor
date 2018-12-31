@@ -30,6 +30,17 @@ FIND_PACKAGE(Voxel 0.1.0 REQUIRED)
 FIND_PACKAGE(PCL REQUIRED)
 find_package(cmake_modules REQUIRED)
 
+add_message_files(
+  FILES
+  ColorPointCloud.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  geometry_msgs
+  std_msgs
+)
+
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES tof_sensor
@@ -55,18 +66,19 @@ include_directories(
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
-add_executable(${PROJECT_NAME}_node src/TOF.cpp)
-add_executable(color_pointcloud_node src/color_pointcloud.cpp)
-
-target_link_libraries(color_pointcloud_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES} ${VOXEL_LIBRARIES})
-
+add_executable(${PROJECT_NAME}_node src/TOF.cpp ${catkin_LIBRARIES})
+add_executable(pointcloud_color_processing src/pointcloud_color_processing.cpp ${catkin_LIBRARIES})
+#add_executable(frame_tf_broadcaster src/transform.cpp)
+#target_link_libraries(frame_tf_broadcaster ${catkin_LIBRARIES})
 ## Specify libraries to link a library or executable target against
  target_link_libraries(${PROJECT_NAME}_node
    ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES}
  )
+target_link_libraries(pointcloud_color_processing ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
+
 
 TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME}_node PUBLIC ${VOXEL_INCLUDE_DIRS})
-#TARGET_INCLUDE_DIRECTORIES(color_pointcloud PUBLIC ${VOXEL_INCLUDE_DIRS})
+
 TARGET_LINK_LIBRARIES(${PROJECT_NAME}_node ${VOXEL_LIBRARIES})
  target_link_libraries(${PROJECT_NAME}_node
    ${Eigen_LIBRARIES}
