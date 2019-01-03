@@ -8,7 +8,7 @@
  12/21/2018
  author: mitchell scott
  */
-#include "tof_sensor/ColorPointCloud.h"
+//#include "tof_sensor/ColorPointCloud.h"
 #include "ros/ros.h"
 #include "sensor_msgs/Image.h"
 #include "sensor_msgs/PointCloud.h"
@@ -39,15 +39,10 @@ typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 typedef pcl::PointCloud<pcl::PointXYZRGB> colorPointCloud;
 
-class Kinect{
-  Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, 307200);
-  float w = 1.0;
+class ImageFusion{
+  //Image variables
   cv_bridge::CvImagePtr cv_ptr;
-  cv::Mat dImg;
-  Eigen::Matrix4d G = Eigen::Matrix4d::Zero(4, 4);
-  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(3, 4);
-  Eigen::Vector3d x_tilda;
-  Eigen::MatrixXd points3D;
+  cv::Mat d_img;
   int size;
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
@@ -58,29 +53,29 @@ class Kinect{
   std_msgs::Float64 cy;
   int imsizeX = 640;
   int imsizeY = 480;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
-  //tof_sensor::ColorPointCloud colorPC;
-  //sensor_msgs::PointCloud pointcloud;
-
+  //Egien variables
+  Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, 307200);
+  Eigen::Matrix4d G = Eigen::Matrix4d::Zero(4, 4);
+  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(3, 4);
+  //ROS Publishers and Subscribers
   ros::NodeHandle n;
-  //ros::Publisher pointcloud_pub = n.advertise<sensor_msgs::PointCloud>("Kinect_pointcloud", 1);
-  //ros::Publisher color_pointcloud_pub = n.advertise<tof_sensor::ColorPointCloud>("color_pointcloud", 1, true);
-  ros::Subscriber infoSub = n.subscribe("/camera/rgb/camera_info", 1000, &Kinect::imgInfoCallback, this);
-  ros::Subscriber sub = n.subscribe("/camera/rgb/image_color", 1000, &Kinect::imgCallback, this);
-  ros::Subscriber kinect_pointcloud_sub = n.subscribe("/camera/depth/points", 1000, &Kinect::kinectPointCloudCallback, this);
-  //ros::Publisher kibnectPub = n.advertise<colorPointCloud> ("kinect_points2", 1);
-  ros::Publisher pub = n.advertise<colorPointCloud> ("color_pointcloud", 1);
+  ros::Subscriber info_sub = n.subscribe("/camera/rgb/camera_info", 1000, &ImageFusion::img_info_callback, this);
+  ros::Subscriber image_sub = n.subscribe("/camera/rgb/image_color", 1000, &ImageFusion::img_callback, this);
+  ros::Subscriber pointcloud_sub = n.subscribe("/camera/depth/points", 1000, &ImageFusion::pointcloud_callback, this);
+  ros::Publisher color_pub = n.advertise<colorPointCloud> ("color_pointcloud", 1);
 
   public:
-    Kinect();
+    ImageFusion();
     int run();
-    void imgInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& info);
-    void imgCallback(const sensor_msgs::Image::ConstPtr& img);
-    void kinectPointCloudCallback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input);
-    //void processing();
+    void img_info_callback(const sensor_msgs::CameraInfo::ConstPtr& info);
+    void img_callback(const sensor_msgs::Image::ConstPtr& img);
+    void pointcloud_callback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input);
 };
 
-Kinect::Kinect(){
+ImageFusion::ImageFusion(){
+  //Constructor. Initalize G MatrixXd
+
+  //TODO make this more clean...
   R = Eigen::Matrix3d::Identity(3,3);
   T = Eigen::Vector3d(0.0,0.0,0.0);
   G(0,0) = R(0,0);
@@ -95,51 +90,34 @@ Kinect::Kinect(){
   G(2,1) = R(2,1);
   G(2,2) = R(2,2);
   G(2,3) = T(2);
-
   G(3,3) = 1.0;
 }
 
-void Kinect::kinectPointCloudCallback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input){
-
+void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input){
+   //ROS callback to get Pointcloud information. Publish color pointcloud here
+   //Convert from ROS pointcloud to PCL type
    pcl::PCLPointCloud2 pcl_pc2;
    pcl_conversions::toPCL(*input,pcl_pc2);
    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
    pcl::fromPCLPointCloud2(pcl_pc2,*cloud);
-
-   std::vector<geometry_msgs::Point32> points;
-   std::vector<float> intensityData;
-   std::vector<float> colorData;
-   size = cloud->size();
-   float w = 1.0;
-
+   //Create new colorpointcloud message type
    colorPointCloud::Ptr CPC (new colorPointCloud);
-
    CPC->header.frame_id = "map";
    CPC->points.resize(size);
-
-   if(size>0){
-     for (int i=0; i<size; i++){
-       PointT kinectPoint = cloud->at(i);
-       geometry_msgs::Point32 point;
-       point.x = kinectPoint.x;
-       point.y = kinectPoint.y;
-       point.z = kinectPoint.z;
-       Eigen::Vector4d x_n(point.x,point.y,point.z,w);
-       X.col(i) = x_n;
-
-       //points.push_back(point);
-       //intensityData.push_back(1.0);
-     }
+   //Loop through all points in pointcloud to create large X matrix
+   size = cloud->size();
+   float w = 1.0;
+   for (int i=0; i<size; i++){
+     PointT imagePoint = cloud->at(i);
+     geometry_msgs::Point32 point;
+     Eigen::Vector4d x_n(imagePoint.x,imagePoint.y,imagePoint.z,w);
+     X.col(i) = x_n;
    }
+   //Calculate image-plane points
    Eigen::MatrixXd X_tilda = K*G*X;
-   //std::vector<std::uint8_t> r;
-   //std::vector<std::uint8_t> g;
-   //std::vector<std::uint8_t> b;
+   //Loop through image points and populate color pointcloud
    for (int i = 0; i<X_tilda.cols(); i++){
-     CPC->points[i].x = X(0, i);
-     CPC->points[i].y = X(1, i);
-     CPC->points[i].z = X(2, i);
-
+     //Determine location in pixels
      int x_px = (int) X_tilda(0, i)/X_tilda(2,i);
      int y_px = (int) X_tilda(1, i)/X_tilda(2,i);
      if (x_px > imsizeX - 1){
@@ -154,48 +132,43 @@ void Kinect::kinectPointCloudCallback(const boost::shared_ptr<const sensor_msgs:
      else if (y_px <= 0){
        y_px = 1;
      }
-     if (dImg.rows > 0 && dImg.cols >0){
-       cv::Vec3b color = dImg.at<cv::Vec3b>(y_px,x_px);
-       //r.push_back(color(2));
-       //g.push_back(color(1));
-       //b.push_back(color(0));
-
+     if (d_img.rows > 0 && d_img.cols >0){
+       //Get RGB color from pixel location
+       cv::Vec3b color = d_img.at<cv::Vec3b>(y_px,x_px);
+       //Add 3D point and color information to new color pointcloud
+       CPC->points[i].x = X(0, i);
+       CPC->points[i].y = X(1, i);
+       CPC->points[i].z = X(2, i);
        CPC->points[i].r = color(2);
        CPC->points[i].g = color(1);
        CPC->points[i].b = color(0);
-
-       //Eigen::Vector4d x_n = X.col(i);
-       //float x = x_n(0);
-       //float y = x_n(1);
-       //float z = x_n(2);
      }
    }
+   //Publish color pointcloud
    pcl_conversions::toPCL(ros::Time::now(), CPC->header.stamp);
-   pub.publish (CPC);
+   color_pub.publish (CPC);
  }
 
-void Kinect::imgCallback(const sensor_msgs::Image::ConstPtr& img){
-  //Get image from Image Source
+void ImageFusion::img_callback(const sensor_msgs::Image::ConstPtr& img){
+  //ROS callback to get image
   try {
+    //Convert ROS image to CV image
       cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::BGR8);
-      dImg =  cv_ptr->image;
+      d_img =  cv_ptr->image;
   } catch (cv_bridge::Exception& e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
       return;
   }
-  cv::imshow("img", cv_ptr->image);
-  //cv::waitKey(3);
 }
 
-void Kinect::imgInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& info){
-  //Get camera information
-  //ROS_INFO("INFO");
+void ImageFusion::img_info_callback(const sensor_msgs::CameraInfo::ConstPtr& info){
+  //ROS callback to get camera information
   fx.data = info->K[0];
   s.data = info->K[1];
   fy.data = info->K[4];
   cx.data = info->K[2];
   cy.data = info->K[5];
-  //Need to be better at Eigen.........
+  //Population intrinsic matrix
   K(0,0) = fx.data;
   K(0,1) = s.data;
   K(0,2) = cx.data;
@@ -206,18 +179,3 @@ void Kinect::imgInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& info){
   K(2,1) = 0.0;
   K(2,2) = 1.0;
 }
-
-/*
-int Kinect::run(){
-  //Verify ROS is working properly
-  ros::Rate loop_rate(10);
-  while (ros::ok()){
-
-    loop_rate.sleep();
-    ros::spinOnce();
-
-  }
-
-  return 0;
-}
-*/

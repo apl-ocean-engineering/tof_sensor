@@ -30,10 +30,9 @@ FIND_PACKAGE(Voxel 0.1.0 REQUIRED)
 FIND_PACKAGE(PCL REQUIRED)
 find_package(cmake_modules REQUIRED)
 
-add_message_files(
-  FILES
-  ColorPointCloud.msg
-)
+#add_message_files(
+#  FILES
+#)
 
 generate_messages(
   DEPENDENCIES
