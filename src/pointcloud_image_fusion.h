@@ -15,9 +15,16 @@
 #include "geometry_msgs/Point32.h"
 #include "sensor_msgs/CameraInfo.h"
 #include "std_msgs/Float64.h"
+#include <tf/transform_listener.h>
 
+#include <tf/tf.h>
+#include <eigen_conversions/eigen_msg.h>
+#include "tf_conversions/tf_eigen.h"
+#include "tf/transform_datatypes.h"
 #include <Eigen/Dense>
 #include <Eigen/Eigen>
+#include "Eigen/Core"
+#include "Eigen/Geometry"
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/point_types.h>
@@ -54,30 +61,33 @@ class ImageFusion{
   int imsizeX = 640;
   int imsizeY = 480;
   //Egien variables
-  Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, 307200);
-  Eigen::Matrix4d G = Eigen::Matrix4d::Zero(4, 4);
-  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(3, 4);
+  //Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, 307200);
+  Eigen::Matrix4d G;// = Eigen::Matrix4d::Zero(4, 4);
+  Eigen::MatrixXd K;// = Eigen::MatrixXd::Zero(3, 4);
   //ROS Publishers and Subscribers
+  tf::TransformListener listener;
   ros::NodeHandle n;
   ros::Subscriber info_sub = n.subscribe("/camera/rgb/camera_info", 1000, &ImageFusion::img_info_callback, this);
   ros::Subscriber image_sub = n.subscribe("/camera/rgb/image_color", 1000, &ImageFusion::img_callback, this);
-  ros::Subscriber pointcloud_sub = n.subscribe("/camera/depth/points", 1000, &ImageFusion::pointcloud_callback, this);
+  //ros::Subscriber pointcloud_sub = n.subscribe("/camera/depth_registered/points", 1000, &ImageFusion::pointcloud_callback, this);
+  ros::Subscriber pointcloud_sub = n.subscribe("tof_pointcloud", 1000, &ImageFusion::pointcloud_callback, this);
   ros::Publisher color_pub = n.advertise<colorPointCloud> ("color_pointcloud", 1);
 
   public:
     ImageFusion();
-    int run();
+    //int run();
     void img_info_callback(const sensor_msgs::CameraInfo::ConstPtr& info);
     void img_callback(const sensor_msgs::Image::ConstPtr& img);
     void pointcloud_callback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input);
+    void transform();
 };
 
 ImageFusion::ImageFusion(){
   //Constructor. Initalize G MatrixXd
-
-  //TODO make this more clean...
   R = Eigen::Matrix3d::Identity(3,3);
   T = Eigen::Vector3d(0.0,0.0,0.0);
+  G = Eigen::Matrix4d::Zero(4, 4);
+  K = Eigen::MatrixXd::Zero(3, 4);
   G(0,0) = R(0,0);
   G(0,1) = R(0,1);
   G(0,2) = R(0,2);
@@ -93,20 +103,58 @@ ImageFusion::ImageFusion(){
   G(3,3) = 1.0;
 }
 
+void ImageFusion::transform(){
+  tf::StampedTransform transform;
+   try{
+     listener.lookupTransform("/map", "/camera_depth_optical_frame",
+                              ros::Time(0), transform);
+   }
+   catch (tf::TransformException &ex) {
+     ROS_ERROR("%s",ex.what());
+     ros::Duration(1.0).sleep();
+   }
+   T(0) = transform.getOrigin().x();
+   T(1) = transform.getOrigin().y();
+   T(2) = transform.getOrigin().z();
+   tf::Quaternion quaternion = transform.getRotation();
+   tf::Matrix3x3 rotation_matrix(quaternion);
+   tf::matrixTFToEigen(rotation_matrix, R);
+
+   G(0,0) = R(0,0);
+   G(0,1) = R(0,1);
+   G(0,2) = R(0,2);
+   G(0,3) = T(0);
+   G(1,0) = R(1,0);
+   G(1,1) = R(1,1);
+   G(1,2) = R(1,2);
+   G(1,3) = T(1);
+   G(2,0) = R(2,0);
+   G(2,1) = R(2,1);
+   G(2,2) = R(2,2);
+   G(2,3) = T(2);
+   G(3,3) = 1.0;
+
+   //std::cout<<G<<std::endl;
+   //std::cout<<std::endl;
+}
+
 void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input){
    //ROS callback to get Pointcloud information. Publish color pointcloud here
    //Convert from ROS pointcloud to PCL type
+   transform();
    pcl::PCLPointCloud2 pcl_pc2;
    pcl_conversions::toPCL(*input,pcl_pc2);
    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
    pcl::fromPCLPointCloud2(pcl_pc2,*cloud);
+   size = cloud->size();
+   Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, size);
+   float w = 1.0;
    //Create new colorpointcloud message type
    colorPointCloud::Ptr CPC (new colorPointCloud);
    CPC->header.frame_id = "map";
    CPC->points.resize(size);
+
    //Loop through all points in pointcloud to create large X matrix
-   size = cloud->size();
-   float w = 1.0;
    for (int i=0; i<size; i++){
      PointT imagePoint = cloud->at(i);
      geometry_msgs::Point32 point;
@@ -120,33 +168,38 @@ void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs:
      //Determine location in pixels
      int x_px = (int) X_tilda(0, i)/X_tilda(2,i);
      int y_px = (int) X_tilda(1, i)/X_tilda(2,i);
-     if (x_px > imsizeX - 1){
-       x_px = imsizeX -1;
-     }
-     else if (x_px <= 0){
-       x_px = 1;
-     }
-     if (y_px > imsizeY - 1){
-       y_px = imsizeY -1;
-     }
-     else if (y_px <= 0){
-       y_px = 1;
-     }
-     if (d_img.rows > 0 && d_img.cols >0){
-       //Get RGB color from pixel location
-       cv::Vec3b color = d_img.at<cv::Vec3b>(y_px,x_px);
-       //Add 3D point and color information to new color pointcloud
-       CPC->points[i].x = X(0, i);
-       CPC->points[i].y = X(1, i);
-       CPC->points[i].z = X(2, i);
-       CPC->points[i].r = color(2);
-       CPC->points[i].g = color(1);
-       CPC->points[i].b = color(0);
+     if (x_px < imsizeX && x_px >= 0 && y_px < imsizeY && y_px >= 0){
+       /*
+       if (x_px > imsizeX - 1){
+         x_px = imsizeX -1;
+       }
+       else if (x_px <= 0){
+         x_px = 1;
+       }
+       if (y_px > imsizeY - 1){
+         y_px = imsizeY -1;
+       }
+       else if (y_px <= 0){
+         y_px = 1;
+       }
+       */
+       if (d_img.rows > 0 && d_img.cols >0){
+         //Get RGB color from pixel location
+         cv::Vec3b color = d_img.at<cv::Vec3b>(y_px,x_px);
+         //Add 3D point and color information to new color pointcloud
+         CPC->points[i].x = X(0, i);
+         CPC->points[i].y = X(1, i);
+         CPC->points[i].z = X(2, i);
+         CPC->points[i].r = color(2);
+         CPC->points[i].g = color(1);
+         CPC->points[i].b = color(0);
+       }
      }
    }
    //Publish color pointcloud
    pcl_conversions::toPCL(ros::Time::now(), CPC->header.stamp);
    color_pub.publish (CPC);
+
  }
 
 void ImageFusion::img_callback(const sensor_msgs::Image::ConstPtr& img){

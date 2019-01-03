@@ -1,7 +1,15 @@
 # tof_sensor
-ROS package to produce TOF 3D color point clouds utilizing TI's [voxelsdk](https://github.com/3dtof/voxelsdk) package and an additional monocular camera. Not yet fully functioning.  
+ROS package to produce TOF 3D color point clouds utilizing TI's [voxelsdk](https://github.com/3dtof/voxelsdk) package and an additional monocular camera.
+
+## Requirments
+ROS (tested on melodic)  
+[voxelsdk](https://github.com/3dtof/voxelsdk)  
+[Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page)  
+[OpenCv](https://opencv.org/)
+
+## Installing
+Clone into <catkin_ws>/src and compile the workspace using the flag -DCMAKE_BUILD_TYPE=Release  
 
 ## TODO
-There is an issue with constantly occuring segmentation faults occuring when trying to publish pointclouds. Need to solve this.  
-Color data is not yet accurate... how should this data be transmitted over ROS?  
 Need to calculate transformation G between camera and TOF frame.  
+Generalize system, more to launch files.  

@@ -91,12 +91,15 @@ int main(int argc, char** argv){
            msg->points.resize(data_size);
            for (int i = 0; i< data_size; i++){
              //Add points to pointcloud topic
-             float x = d->points.at(i).x;
-             float y = d->points.at(i).y;
-             float z = d->points.at(i).z;
-             msg->points[i].x = x;
-             msg->points[i].y = y;
-             msg->points[i].z = z;
+             float intensity = d->points.at(i).i;
+             if (intensity > 0.003){
+               float x = d->points.at(i).x;
+               float y = d->points.at(i).y;
+               float z = d->points.at(i).z;
+               msg->points[i].x = x;
+               msg->points[i].y = y;
+               msg->points[i].z = z;
+             }
             }
             //Publish data
             pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);

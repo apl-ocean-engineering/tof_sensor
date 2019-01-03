@@ -18,13 +18,16 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   genmsg
+  tf
+  eigen_conversions
+  tf_conversions
 )
 find_package(OpenCV REQUIRED)
-find_package(Eigen 3 QUIET)
-if(NOT Eigen_FOUND)
-  include(${PROJ_SOURCE_DIR}/cfg/FindEigen3.cmake)
-  set(Eigen_INCLUDE_DIR ${EIGEN3_INCLUDE_DIR})
-endif()
+find_package(Eigen REQUIRED)
+#if(NOT Eigen_FOUND)
+#  include(${PROJ_SOURCE_DIR}/cfg/FindEigen3.cmake)
+#  set(Eigen_INCLUDE_DIR ${EIGEN3_INCLUDE_DIR})
+#endif()
 include_directories(${Eigen_INCLUDE_DIR})
 FIND_PACKAGE(Voxel 0.1.0 REQUIRED)
 FIND_PACKAGE(PCL REQUIRED)
@@ -44,8 +47,8 @@ catkin_package(
   INCLUDE_DIRS
   LIBRARIES tof_sensor
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs sensor_msgs
-  pcl_ros pcl
-  DEPENDS Eigen3
+  pcl_ros pcl 
+  DEPENDS Eigen eigen_conversions
 )
 
 ###########

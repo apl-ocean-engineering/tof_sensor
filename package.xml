@@ -62,6 +62,9 @@
   <build_depend>pcl_ros</build_depend>
   <build_depend>pcl</build_depend>
   <build_depend>message_generation</build_depend>
+  <build_depend>eigen_conversions</build_depend>
+  <build_depend>tf_conversions</build_depend>
+
 
   <build_export_depend>geometry_msgs</build_export_depend>
   <build_export_depend>tf</build_export_depend>
@@ -74,6 +77,8 @@
   <build_export_depend>pcl_ros</build_export_depend>
   <build_export_depend>pcl</build_export_depend>
   <build_export_depend>sensor_msgs</build_export_depend>
+  <build_export_depend>eigen_conversions</build_export_depend>
+  <build_export_depend>tf_conversions</build_export_depend>
 
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>tf</exec_depend>
@@ -86,6 +91,8 @@
   <exec_depend>pcl_ros</exec_depend>
   <exec_depend>pcl</exec_depend>
   <exec_depend>image_transport</exec_depend>
+  <exec_depend>eigen_conversions</exec_depend>
+  <exec_depend>tf_conversions</exec_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

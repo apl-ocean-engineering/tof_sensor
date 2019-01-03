@@ -1,8 +1,7 @@
 <launch>
-
-	<include file="$(find openni_launch)/launch/openni.launch" />
-	<node name="tof_sensor" pkg="tof_sensor" type="tof_sensor_node" output="screen" />
-	<node name="color_pointcloud" pkg="tof_sensor" type="color_pointcloud_node" output="screen" />
-
+    <!--include file="$(find openni_launch)/launch/openni.launch" /-->
+    <include file="$(find tof_sensor)/launch/transform.launch" />
+    <node name="tof_sensor" pkg="tof_sensor" type="tof_pointcloud_publisher" output="screen" />
+    <node name="color_pointcloud" pkg="tof_sensor" type="pointcloud_image_fusion" output="screen" />
 </launch>
 	
