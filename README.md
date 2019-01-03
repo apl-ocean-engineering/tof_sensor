@@ -8,7 +8,7 @@ ROS (tested on Melodic)
 [OpenCv](https://opencv.org/)
 
 ## Installing
-Clone into <catkin_ws>/src and compile the workspace using the flag -DCMAKE_BUILD_TYPE=Release  
+Clone into <catkin_ws>/src and compile the workspace using the flag -DCMAKE_BUILD_TYPE=Release   
 
 ## TODO
 Need to calculate transformation G between camera and TOF frame.  
