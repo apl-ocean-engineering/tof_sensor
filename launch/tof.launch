@@ -1,7 +1,13 @@
 <launch>
-    <!--include file="$(find openni_launch)/launch/openni.launch" /-->
+    <arg name="tof_node" value="false" />
+    <!-- TRANSFORMATION NODE -->
     <include file="$(find tof_sensor)/launch/transform.launch" />
-    <node name="tof_sensor" pkg="tof_sensor" type="tof_pointcloud_publisher" output="screen" />
-    <node name="color_pointcloud" pkg="tof_sensor" type="pointcloud_image_fusion" output="screen" />
+    <!-- TOF PUBLISHER -->
+    <node if="$(arg tof_node)" name="tof_sensor" pkg="tof_sensor" type="tof_pointcloud_publisher" output="screen" />
+    <!-- TOF-IMAGE FUSION -->
+    <node name="color_pointcloud" pkg="tof_sensor" type="pointcloud_image_fusion" output="screen" >
+      <param name="/image" value="/camera/rgb/image_color" />
+      <param name="/image_info" value="/camera/rgb/camera_info" />
+      <param name="/points" value="/camera/depth/points" />
+    </node>
 </launch>
-	

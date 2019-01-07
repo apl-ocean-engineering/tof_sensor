@@ -72,7 +72,7 @@ add_definitions(${PCL_DEFINITIONS})
 
 #Executables
 add_executable(pointcloud_image_fusion src/pointcloud_image_fusion.cpp ${catkin_LIBRARIES})
-add_executable(tof_pointcloud_publisher src/TOF_pointcloud_publisher.cpp ${catkin_LIBRARIES})
+add_executable(tof_pointcloud_publisher src/tof_pointcloud_publisher.cpp ${catkin_LIBRARIES})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pointcloud_image_fusion ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
