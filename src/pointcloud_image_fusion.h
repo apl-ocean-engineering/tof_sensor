@@ -67,13 +67,18 @@ class ImageFusion{
   tf::TransformListener listener;
   ros::NodeHandle n;
 
+  sensor_msgs::Image image_;
   ros::Publisher color_pub = n.advertise<colorPointCloud> ("image_fusion/color_pointcloud", 1);
+  ros::Publisher image_pub_ = n.advertise<sensor_msgs::Image> ("projected_image", 30);
+
+  //ros::Subscriber image_sub = n.subscribe("/tof_pointcloud", 1000, &ImageFusion::pointcloud_callback_img_pub, this);
 
   public:
     ImageFusion();
     void img_info_callback(const sensor_msgs::CameraInfo::ConstPtr& info);
     void img_callback(const sensor_msgs::Image::ConstPtr& img);
     void pointcloud_callback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input);
+    void pointcloud_callback_img_pub(const sensor_msgs::PointCloud2ConstPtr& input);
     void transform();
 };
 
@@ -97,6 +102,24 @@ ImageFusion::ImageFusion(){
   G(2,3) = T(2);
   G(3,3) = 1.0;
 }
+
+void ImageFusion::pointcloud_callback_img_pub(const sensor_msgs::PointCloud2ConstPtr& input){
+  ROS_INFO("here");
+  sensor_msgs::Image image_;
+  if ((input->width * input->height) == 0){
+    return; //return if the cloud is not dense!
+  }
+  try {
+    pcl::toROSMsg (*input, image_); //convert the cloud
+  }
+  catch (std::runtime_error e)
+  {
+    ROS_ERROR_STREAM("Error in converting cloud to image message: "
+                    << e.what());
+  }
+  image_.header.frame_id = "map";
+  image_pub_.publish (image_); //publish our cloud image
+  }
 
 void ImageFusion::transform(){
   tf::StampedTransform transform;
@@ -135,9 +158,15 @@ void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs:
    //ROS callback to get Pointcloud information. Publish color pointcloud here
    //Convert from ROS pointcloud to PCL type
    transform();
+   //const boost::shared_ptr<const sensor_msgs::PointCloud2>& pointcloud_input = input;
+   //pcl_conversions::toPCL(*input,image_);
+   //image_pub_.publish (image_);
+
    pcl::PCLPointCloud2 pcl_pc2;
    pcl_conversions::toPCL(*input,pcl_pc2);
+
    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
    pcl::fromPCLPointCloud2(pcl_pc2,*cloud);
    size = cloud->size();
    Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, size);

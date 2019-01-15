@@ -1,5 +1,5 @@
 <launch>
-    <arg name="tof_node" value="false" />
+    <arg name="tof_node" value="true" />
     <!-- TRANSFORMATION NODE -->
     <include file="$(find tof_sensor)/launch/transform.launch" />
     <!-- TOF PUBLISHER -->

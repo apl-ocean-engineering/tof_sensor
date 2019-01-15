@@ -21,9 +21,11 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   eigen_conversions
   tf_conversions
+  image_geometry
 )
+include_directories(include)
 find_package(OpenCV REQUIRED)
-find_package(Eigen REQUIRED)
+find_package(Eigen REQUIRED)       
 #if(NOT Eigen_FOUND)
 #  include(${PROJ_SOURCE_DIR}/cfg/FindEigen3.cmake)
 #  set(Eigen_INCLUDE_DIR ${EIGEN3_INCLUDE_DIR})
@@ -46,7 +48,7 @@ generate_messages(
 catkin_package(
   INCLUDE_DIRS
   LIBRARIES tof_sensor
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs sensor_msgs
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs sensor_msgs image_geometry
   pcl_ros pcl 
   DEPENDS Eigen eigen_conversions
 )
@@ -59,7 +61,6 @@ catkin_package(
 ## Your package locations should be listed before other locations
 
 include_directories(
-  include
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
@@ -73,10 +74,14 @@ add_definitions(${PCL_DEFINITIONS})
 #Executables
 add_executable(pointcloud_image_fusion src/pointcloud_image_fusion.cpp ${catkin_LIBRARIES})
 add_executable(tof_pointcloud_publisher src/tof_pointcloud_publisher.cpp ${catkin_LIBRARIES})
+add_executable(extrinsic_calibration src/extrinsic_calibration.cpp ${catkin_LIBRARIES})
+#add_executable(pointcloud_to_depthimage src/pointcloud_to_depthimage.cpp ${catkin_LIBRARIES})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pointcloud_image_fusion ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
 target_link_libraries(tof_pointcloud_publisher ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES} ${VOXEL_LIBRARIES})
-
+target_link_libraries(extrinsic_calibration ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
+#target_link_libraries(pointcloud_to_depthimage ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
+ 
 
 TARGET_INCLUDE_DIRECTORIES(tof_pointcloud_publisher PUBLIC ${VOXEL_INCLUDE_DIRS})

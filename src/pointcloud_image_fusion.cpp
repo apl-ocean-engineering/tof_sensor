@@ -14,7 +14,7 @@ int main(int argc, char** argv){
   }
   else{
     ROS_ERROR("No info topic specified, subscribing to /camera/rgb/camera_info");
-    camera_info = "/camera/rgb/image_color";
+    camera_info = "/camera/rgb/camera_info";
   }
 
   std::string camera;
