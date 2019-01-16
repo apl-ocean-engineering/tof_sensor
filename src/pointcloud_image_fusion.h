@@ -9,15 +9,29 @@
  author: mitchell scott
  */
 //#include "tof_sensor/ColorPointCloud.h"
+#include <fstream>
+#include <string>
+#include <typeinfo>
+#include <vector>
+#include <iostream>
+
 #include "ros/ros.h"
+#include "ros/console.h"
 #include "sensor_msgs/Image.h"
 #include "sensor_msgs/PointCloud.h"
 #include "geometry_msgs/Point32.h"
 #include "sensor_msgs/CameraInfo.h"
 #include "std_msgs/Float64.h"
 #include <tf/transform_listener.h>
-
 #include <tf/tf.h>
+
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
 #include <eigen_conversions/eigen_msg.h>
 #include "tf_conversions/tf_eigen.h"
 #include "tf/transform_datatypes.h"
@@ -25,22 +39,11 @@
 #include <Eigen/Eigen>
 #include "Eigen/Core"
 #include "Eigen/Geometry"
+
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <ros/console.h>
-#include <fstream>
-#include <string>
-#include <typeinfo>
-#include <vector>
-#include <iostream>
-#include <image_transport/image_transport.h>
-#include <cv_bridge/cv_bridge.h>
-#include <sensor_msgs/image_encodings.h>
-#include <opencv2/core/core.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
 
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
@@ -68,10 +71,10 @@ class ImageFusion{
   ros::NodeHandle n;
 
   sensor_msgs::Image image_;
-  ros::Publisher color_pub = n.advertise<colorPointCloud> ("image_fusion/color_pointcloud", 1);
-  ros::Publisher image_pub_ = n.advertise<sensor_msgs::Image> ("projected_image", 30);
-
-  //ros::Subscriber image_sub = n.subscribe("/tof_pointcloud", 1000, &ImageFusion::pointcloud_callback_img_pub, this);
+  ros::Publisher color_pub = n.advertise<colorPointCloud>
+                                          ("image_fusion/color_pointcloud", 1);
+  ros::Publisher image_pub_ = n.advertise<sensor_msgs::Image>
+                                                       ("projected_image", 30);
 
   public:
     ImageFusion();
@@ -119,7 +122,7 @@ void ImageFusion::pointcloud_callback_img_pub(const sensor_msgs::PointCloud2Cons
   }
   image_.header.frame_id = "map";
   image_pub_.publish (image_); //publish our cloud image
-  }
+}
 
 void ImageFusion::transform(){
   tf::StampedTransform transform;
@@ -157,10 +160,7 @@ void ImageFusion::transform(){
 void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input){
    //ROS callback to get Pointcloud information. Publish color pointcloud here
    //Convert from ROS pointcloud to PCL type
-   transform();
-   //const boost::shared_ptr<const sensor_msgs::PointCloud2>& pointcloud_input = input;
-   //pcl_conversions::toPCL(*input,image_);
-   //image_pub_.publish (image_);
+   transform(); //Transform to frame coordinates
 
    pcl::PCLPointCloud2 pcl_pc2;
    pcl_conversions::toPCL(*input,pcl_pc2);
@@ -175,7 +175,6 @@ void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs:
    colorPointCloud::Ptr CPC (new colorPointCloud);
    CPC->header.frame_id = "map";
    CPC->points.resize(size);
-
    //Loop through all points in pointcloud to create large X matrix
    for (int i=0; i<size; i++){
      PointT imagePoint = cloud->at(i);

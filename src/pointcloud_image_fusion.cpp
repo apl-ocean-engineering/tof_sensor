@@ -38,9 +38,12 @@ int main(int argc, char** argv){
   }
 
   //Subscribe and spin
-  ros::Subscriber image_sub = n.subscribe(camera, 1000, &ImageFusion::img_callback, &imageFusion);
-  ros::Subscriber pointcloud_sub = n.subscribe(pointcloud, 1000, &ImageFusion::pointcloud_callback, &imageFusion);
-  ros::Subscriber info_sub = n.subscribe(camera_info, 1000, &ImageFusion::img_info_callback, &imageFusion);
+  ros::Subscriber image_sub = n.subscribe(camera, 1000,
+                                     &ImageFusion::img_callback, &imageFusion);
+  ros::Subscriber pointcloud_sub = n.subscribe(pointcloud, 1000,
+                              &ImageFusion::pointcloud_callback, &imageFusion);
+  ros::Subscriber info_sub = n.subscribe(camera_info, 1000,
+                                &ImageFusion::img_info_callback, &imageFusion);
 
   ros::spin();
   return 0;

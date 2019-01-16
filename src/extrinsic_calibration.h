@@ -197,7 +197,8 @@ void ImageConverter::mouseEventOccurred(const pcl::visualization::MouseEvent
       event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease &&
       point_press_count == 0){
         std::cout << "Left mouse button released at position ("
-                      << event.getX() << ", " << event.getY() << ")" << std::endl;
+                      << event.getX() << ", " << event.getY() << ")"
+                      << std::endl;
         point_press_count += 1;
         clickedPoint.x = event.getX();
         clickedPoint.y = event.getY();
@@ -205,7 +206,8 @@ void ImageConverter::mouseEventOccurred(const pcl::visualization::MouseEvent
 }
 
 //Make this function similar to mouseclick
-void ImageConverter::points3D(const pcl::visualization::PointPickingEvent& event, void*){
+void ImageConverter::points3D(const pcl::visualization::PointPickingEvent& event,
+                                                                        void*){
   float x, y, z;
   if (event.getPointIndex () != -1 && point_press_count==0)
   {
@@ -254,7 +256,6 @@ void ImageConverter::run(){
   viewer->initCameraParameters();
 
   //trackbar init
-  //int x_min_slider;
   namedWindow(trackbar_name, 1);
   createTrackbar("x_min ([-1000, 1000] cm)", trackbar_name, &x_min, 2000);
   createTrackbar("x_max ([-1000, 1000] cm)", trackbar_name, &x_max, 2000);
@@ -281,7 +282,7 @@ void ImageConverter::run(){
       z_min_float = (z_min_float - 1000.0)/100.0;
       z_max_float = (z_max_float - 1000.0)/100.0;
       //filter cloud
-      std::cout << "x min: " << x_min_float << "x_max: " << x_max_float << std::endl;
+      //std::cout << "x min: " << x_min_float << "x_max: " << x_max_float << std::endl;
       pcl::PassThrough<pcl::PointXYZ> pass;
       //x filter
       pass.setInputCloud(cloud_ptr);

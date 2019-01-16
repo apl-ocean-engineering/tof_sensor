@@ -75,13 +75,11 @@ add_definitions(${PCL_DEFINITIONS})
 add_executable(pointcloud_image_fusion src/pointcloud_image_fusion.cpp ${catkin_LIBRARIES})
 add_executable(tof_pointcloud_publisher src/tof_pointcloud_publisher.cpp ${catkin_LIBRARIES})
 add_executable(extrinsic_calibration src/extrinsic_calibration.cpp ${catkin_LIBRARIES})
-#add_executable(pointcloud_to_depthimage src/pointcloud_to_depthimage.cpp ${catkin_LIBRARIES})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pointcloud_image_fusion ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
 target_link_libraries(tof_pointcloud_publisher ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES} ${VOXEL_LIBRARIES})
 target_link_libraries(extrinsic_calibration ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
-#target_link_libraries(pointcloud_to_depthimage ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES})
  
 
 TARGET_INCLUDE_DIRECTORIES(tof_pointcloud_publisher PUBLIC ${VOXEL_INCLUDE_DIRS})
