@@ -21,6 +21,7 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/console/parse.h>
 #include <pcl/point_types.h>
+#include <pcl/filters/passthrough.h>
 
 #include <Eigen/Dense>
 #include <Eigen/Eigen>
@@ -42,17 +43,30 @@ static const std::string OPENCV_WINDOW = "Image window";
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
+using namespace cv;
+
 class ImageConverter
 {
   cv::Mat img;
   cv::Size patternsize = cv::Size(8,6);
   float checkerboardDist = .04826; //m
   cv_bridge::CvImagePtr cv_ptr;
-  int count = 0;
+  int point_press_count = 0;
   bool print_point = true;
 
   Eigen::MatrixXd Xi; //Image plane homogenous points
   Eigen::MatrixXd Xw; //Image plane homogenous points
+
+  //Trackbar (all in cm)
+  int x_min = 1000;
+  int x_max = 1000;
+  int y_min = 1000;
+  int y_max = 1000;
+  int z_min = 1000;
+  int z_max = 1000;
+  const std::string trackbar_name = "trackbar";
+
+  char TrackbarName[50];
 
   PointCloudT cloud;
   PointT clickedPoint;
@@ -85,10 +99,7 @@ public:
   void mouseEventOccurred(const pcl::visualization::MouseEvent &event,
                                                           void* viewer_void);
   void points3D(const pcl::visualization::PointPickingEvent& event, void*);
-
-  void Mouse(){
-    std::cout<<"here"<<std::endl;
-  }
+  void record_point();
   int getch();
   void run();
 };
@@ -155,18 +166,17 @@ void ImageConverter::imageCb(const sensor_msgs::ImageConstPtr& msg)
     ROS_ERROR("cv_bridge exception: %s", e.what());
     return;
   }
-  //chessBoard(cv_ptr);
 }
 
 void ImageConverter::pointcloud_callback(const
                                   sensor_msgs::PointCloud2ConstPtr& msg){
   pcl::fromROSMsg(*msg, cloud);
+
 }
 
 void ImageConverter::img_info_callback(const
                                 sensor_msgs::CameraInfo::ConstPtr& info){
   //ROS callback to get camera information
-  //ROS_INFO("info");
   fx.data = info->K[0];
   s.data = info->K[1];
   fy.data = info->K[4];
@@ -183,38 +193,35 @@ void ImageConverter::img_info_callback(const
 
 void ImageConverter::mouseEventOccurred(const pcl::visualization::MouseEvent
                                                     &event, void*){
-  /*
-  boost::shared_ptr<pcl::visualization::PCLVisualizer>
-          viewer =*static_cast
-          <boost::shared_ptr<pcl::visualization::PCLVisualizer>*>(viewer_void);
-  */
   if (event.getButton() == pcl::visualization::MouseEvent::LeftButton &&
-      event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease && count==0){
-      //chessBoard(cv_ptr);
-      std::cout << "Left mouse button released at position (" << event.getX() << ", " << event.getY() << ")" << std::endl;
-      //ImageConverterMouse();
-      count += 1;
-      clickedPoint.x = event.getX();
-      clickedPoint.y = event.getY();
-      //clickedPoint.z = event.getZ();
-      //std::cout<<count<<std::endl;
-    }
+      event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease &&
+      point_press_count == 0){
+        std::cout << "Left mouse button released at position ("
+                      << event.getX() << ", " << event.getY() << ")" << std::endl;
+        point_press_count += 1;
+        clickedPoint.x = event.getX();
+        clickedPoint.y = event.getY();
+      }
 }
 
 //Make this function similar to mouseclick
 void ImageConverter::points3D(const pcl::visualization::PointPickingEvent& event, void*){
   float x, y, z;
-  if (event.getPointIndex () != -1 && count==0)
+  if (event.getPointIndex () != -1 && point_press_count==0)
   {
     event.getPoint(x, y, z);
-    std::cout << x << " " << y << " " << z << std::endl;
+    std::cout << "Point clicked: ";
+    std::cout << "x: " << x << " y: " << y << " z: " << z << std::endl;
     clickedPoint.x = x;
     clickedPoint.y = y;
     clickedPoint.z = z;
-    count += 1;
+    point_press_count += 1;
   }
 }
 
+void ImageConverter::record_point(){
+
+}
 
 int ImageConverter::getch()
 {
@@ -235,34 +242,88 @@ int ImageConverter::getch()
 void ImageConverter::run(){
   ros::Rate loop_rate(50);
   //initalize cloud and viewer
-  PointCloudT::Ptr cloud2(new PointCloudT);
+  PointCloudT::Ptr cloud_ptr(new PointCloudT);
+  PointCloudT::Ptr cloud_filtered(new PointCloudT);
   boost::shared_ptr<pcl::visualization::PCLVisualizer>
                   viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
   viewer->setBackgroundColor(0, 0, 0);
-  viewer->addPointCloud<pcl::PointXYZ> (cloud2, "sample cloud");
+  viewer->addPointCloud<pcl::PointXYZ> (cloud_ptr, "sample cloud");
   viewer->setPointCloudRenderingProperties
             (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
   viewer->addCoordinateSystem(1.0);
   viewer->initCameraParameters();
-  while(ros::ok()){
-    *cloud2 = cloud;
-    if (!viewer->wasStopped()){
-      viewer->updatePointCloud<PointT> (cloud2, "sample cloud");
-    }
-    //viewer->registerMouseCallback (&ImageConverter::mouseEventOccurred, *this);
-    viewer->registerPointPickingCallback(&ImageConverter::points3D, *this);
 
-    if (count == 1 && print_point){
+  //trackbar init
+  //int x_min_slider;
+  namedWindow(trackbar_name, 1);
+  createTrackbar("x_min ([-1000, 1000] cm)", trackbar_name, &x_min, 2000);
+  createTrackbar("x_max ([-1000, 1000] cm)", trackbar_name, &x_max, 2000);
+  createTrackbar("y_min ([-1000, 1000] cm)", trackbar_name, &y_min, 2000);
+  createTrackbar("y_max ([-1000, 1000] cm)", trackbar_name, &y_max, 2000);
+  createTrackbar("z_min ([-1000, 1000] cm)", trackbar_name, &z_min, 2000);
+  createTrackbar("z_max ([-1000, 1000] cm)", trackbar_name, &z_max, 2000);
+  while(ros::ok()){
+
+    *cloud_ptr = cloud;
+    //get mins and maxes from trackbar
+    if (!viewer->wasStopped()){
+      float x_min_float = (float) x_min;
+      float x_max_float = (float) x_max;
+      float y_min_float = (float) y_min;
+      float y_max_float = (float) y_max;
+      float z_min_float = (float) z_min;
+      float z_max_float = (float) z_max;
+      //resize to [-10,10]m
+      x_min_float = (x_min_float - 1000.0)/100.0;
+      x_max_float = (x_max_float - 1000.0)/100.0;
+      y_min_float = (y_min_float - 1000.0)/100.0;
+      y_max_float = (y_max_float - 1000.0)/100.0;
+      z_min_float = (z_min_float - 1000.0)/100.0;
+      z_max_float = (z_max_float - 1000.0)/100.0;
+      //filter cloud
+      std::cout << "x min: " << x_min_float << "x_max: " << x_max_float << std::endl;
+      pcl::PassThrough<pcl::PointXYZ> pass;
+      //x filter
+      pass.setInputCloud(cloud_ptr);
+      pass.setFilterFieldName ("x");
+      pass.setFilterLimits(x_min_float, x_max_float);
+      pass.filter(*cloud_filtered);
+      pass.setInputCloud(cloud_filtered);
+      //y filter
+      pass.setFilterFieldName ("y");
+      pass.setFilterLimits(y_min_float, y_max_float);
+      pass.filter(*cloud_filtered);
+      pass.setInputCloud(cloud_filtered);
+      //z filter
+      pass.setFilterFieldName ("z");
+      pass.setFilterLimits(z_min_float, z_max_float);
+      pass.filter(*cloud_filtered);
+
+      viewer->updatePointCloud<PointT> (cloud_filtered, "sample cloud");
+
+      viewer->registerPointPickingCallback(&ImageConverter::points3D, *this);
+    }
+
+    if (point_press_count == 1 && print_point){
       std::cout <<"PRESS ENTER TO SAVE THIS DATA" << std::endl;
+      print_point = false;
+    }
+    if (point_press_count == 1){
       int input;
       input = getch();
-      //count = 0;
+      if (input == 10){
+        //Enter pressed, record data
+        record_point();
+        print_point = true;
+        point_press_count = 0;
+      }
     }
 
-    int c = getch();
-    if (c == 10){
+
+    //int c = getch();
+    //if (c == 10){
       //Enter has been pushed, save!
-    }
+    //}
 
     ///////////////////SOLVE FOR EXTRINSICS//////////////////////////////
     /*
@@ -276,8 +337,10 @@ void ImageConverter::run(){
       }
     }
     */
+    waitKey(1);
     ros::spinOnce();
     viewer->spinOnce();
+
     loop_rate.sleep();
 
   }
