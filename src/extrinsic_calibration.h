@@ -48,11 +48,14 @@ class ImageConverter
   cv::Size patternsize = cv::Size(8,6);
   float checkerboardDist = .04826; //m
   cv_bridge::CvImagePtr cv_ptr;
+  int count = 0;
+  bool print_point = true;
 
   Eigen::MatrixXd Xi; //Image plane homogenous points
   Eigen::MatrixXd Xw; //Image plane homogenous points
 
   PointCloudT cloud;
+  PointT clickedPoint;
 
   std_msgs::Float64 fx;
   std_msgs::Float64 fy;
@@ -79,8 +82,13 @@ public:
   void imageCb(const sensor_msgs::ImageConstPtr& msg);
   void img_info_callback(const sensor_msgs::CameraInfo::ConstPtr& info);
   void pointcloud_callback(const sensor_msgs::PointCloud2ConstPtr& msg);
-  static void mouseEventOccurred(const pcl::visualization::MouseEvent &event,
+  void mouseEventOccurred(const pcl::visualization::MouseEvent &event,
                                                           void* viewer_void);
+  void points3D(const pcl::visualization::PointPickingEvent& event, void*);
+
+  void Mouse(){
+    std::cout<<"here"<<std::endl;
+  }
   int getch();
   void run();
 };
@@ -174,16 +182,39 @@ void ImageConverter::img_info_callback(const
 }
 
 void ImageConverter::mouseEventOccurred(const pcl::visualization::MouseEvent
-                                                    &event, void* viewer_void){
+                                                    &event, void*){
+  /*
   boost::shared_ptr<pcl::visualization::PCLVisualizer>
           viewer =*static_cast
           <boost::shared_ptr<pcl::visualization::PCLVisualizer>*>(viewer_void);
-
+  */
   if (event.getButton() == pcl::visualization::MouseEvent::LeftButton &&
-      event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease){
+      event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease && count==0){
       //chessBoard(cv_ptr);
+      std::cout << "Left mouse button released at position (" << event.getX() << ", " << event.getY() << ")" << std::endl;
+      //ImageConverterMouse();
+      count += 1;
+      clickedPoint.x = event.getX();
+      clickedPoint.y = event.getY();
+      //clickedPoint.z = event.getZ();
+      //std::cout<<count<<std::endl;
     }
 }
+
+//Make this function similar to mouseclick
+void ImageConverter::points3D(const pcl::visualization::PointPickingEvent& event, void*){
+  float x, y, z;
+  if (event.getPointIndex () != -1 && count==0)
+  {
+    event.getPoint(x, y, z);
+    std::cout << x << " " << y << " " << z << std::endl;
+    clickedPoint.x = x;
+    clickedPoint.y = y;
+    clickedPoint.z = z;
+    count += 1;
+  }
+}
+
 
 int ImageConverter::getch()
 {
@@ -218,7 +249,15 @@ void ImageConverter::run(){
     if (!viewer->wasStopped()){
       viewer->updatePointCloud<PointT> (cloud2, "sample cloud");
     }
-    viewer->registerMouseCallback(mouseEventOccurred, (void*)&viewer);
+    //viewer->registerMouseCallback (&ImageConverter::mouseEventOccurred, *this);
+    viewer->registerPointPickingCallback(&ImageConverter::points3D, *this);
+
+    if (count == 1 && print_point){
+      std::cout <<"PRESS ENTER TO SAVE THIS DATA" << std::endl;
+      int input;
+      input = getch();
+      //count = 0;
+    }
 
     int c = getch();
     if (c == 10){
