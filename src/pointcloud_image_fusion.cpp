@@ -2,7 +2,7 @@
 
 int main(int argc, char** argv){
   //init ROS
-  ros::init(argc, argv, "TOF_Node", ros::init_options::NoSigintHandler);
+  ros::init(argc, argv, "pointcloud_image_fusion", ros::init_options::NoSigintHandler);
   ImageFusion imageFusion;
   ros::NodeHandle n;
 

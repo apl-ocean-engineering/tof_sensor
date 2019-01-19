@@ -61,14 +61,17 @@ class ImageFusion{
   std_msgs::Float64 s;
   std_msgs::Float64 cx;
   std_msgs::Float64 cy;
-  int imsizeX = 640;
-  int imsizeY = 480;
+  int imsizeX = 480;
+  int imsizeY = 640;
   //Egien variables
   Eigen::Matrix4d G;
   Eigen::MatrixXd K;
   //ROS Publishers and Subscribers
   tf::TransformListener listener;
   ros::NodeHandle n;
+  colorPointCloud::Ptr CPC;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
+
 
   sensor_msgs::Image image_;
   ros::Publisher color_pub = n.advertise<colorPointCloud>
@@ -85,25 +88,38 @@ class ImageFusion{
     void transform();
 };
 
-ImageFusion::ImageFusion(){
+ImageFusion::ImageFusion() : CPC(new colorPointCloud), cloud(new pcl::PointCloud<pcl::PointXYZ>){
   //Constructor. Initalize G MatrixXd
+
+
   R = Eigen::Matrix3d::Identity(3,3);
-  T = Eigen::Vector3d(0.0,0.0,0.0);
-  G = Eigen::Matrix4d::Zero(4, 4);
+  /*
+  R << 0.669719, 0.740817, 0.0516332,
+       0.034626, 0.038301, -0.998666,
+      -0.74180, 0.670614, 0;
+  */
+  //Eigen::Vector3d T(0.0, 0.0, 0.0);
+  T << 0.0583417, -0.0856591, 0;
+
+  G = Eigen::Matrix4d::Identity();
   K = Eigen::MatrixXd::Zero(3, 4);
-  G(0,0) = R(0,0);
-  G(0,1) = R(0,1);
-  G(0,2) = R(0,2);
+
+  G(0,0) = 0.667;
+  G(0,1) = 0.740817;
+  G(0,2) = 0.0516;
   G(0,3) = T(0);
-  G(1,0) = R(1,0);
-  G(1,1) = R(1,1);
-  G(1,2) = R(1,2);
+
+  G(1,0) = 0.034626;
+  G(1,1) = 0.038301;
+  G(1,2) = -0.998666;
   G(1,3) = T(1);
-  G(2,0) = R(2,0);
-  G(2,1) = R(2,1);
-  G(2,2) = R(2,2);
+
+  G(2,0) = -0.7442;
+  G(2,1) = 0.668;
+  G(2,2) = -0.003;
   G(2,3) = T(2);
-  G(3,3) = 1.0;
+  //G(3,3) = 1.0;
+
 }
 
 void ImageFusion::pointcloud_callback_img_pub(const sensor_msgs::PointCloud2ConstPtr& input){
@@ -140,7 +156,7 @@ void ImageFusion::transform(){
    tf::Quaternion quaternion = transform.getRotation();
    tf::Matrix3x3 rotation_matrix(quaternion);
    tf::matrixTFToEigen(rotation_matrix, R);
-
+   /*
    G(0,0) = R(0,0);
    G(0,1) = R(0,1);
    G(0,2) = R(0,2);
@@ -154,6 +170,7 @@ void ImageFusion::transform(){
    G(2,2) = R(2,2);
    G(2,3) = T(2);
    G(3,3) = 1.0;
+   */
 
 }
 
@@ -165,49 +182,72 @@ void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs:
    pcl::PCLPointCloud2 pcl_pc2;
    pcl_conversions::toPCL(*input,pcl_pc2);
 
-   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+   //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
    pcl::fromPCLPointCloud2(pcl_pc2,*cloud);
    size = cloud->size();
    Eigen::MatrixXd X = Eigen::MatrixXd::Zero(4, size);
    float w = 1.0;
    //Create new colorpointcloud message type
-   colorPointCloud::Ptr CPC (new colorPointCloud);
+
    CPC->header.frame_id = "map";
    CPC->points.resize(size);
    //Loop through all points in pointcloud to create large X matrix
    for (int i=0; i<size; i++){
      PointT imagePoint = cloud->at(i);
      geometry_msgs::Point32 point;
-     Eigen::Vector4d x_n(imagePoint.x,imagePoint.y,imagePoint.z,w);
-     X.col(i) = x_n;
+     if (imagePoint.z > 0){
+       //Verify we're above z depth
+       Eigen::Vector4d x_n(imagePoint.x,imagePoint.y,imagePoint.z,w);
+       X.col(i) = x_n;
+     }
    }
    //Calculate image-plane points
+   Eigen::Matrix3d trans;
+   //trans << -1,0,0,0,1,0,0,0,1;
    Eigen::MatrixXd X_tilda = K*G*X;
+   //std::cout << "X_tilda size : " << X_tilda.rows() << "," << X_tilda.cols() << std::endl;
+   //std::cout << K << std::endl;
    //Loop through image points and populate color pointcloud
    for (int i = 0; i<X_tilda.cols(); i++){
      //Determine location in pixels
      int x_px = (int) X_tilda(0, i)/X_tilda(2,i);
      int y_px = (int) X_tilda(1, i)/X_tilda(2,i);
+     //std::cout << "G: " << G << std::endl << std::endl;
+     //std::cout << "K: " << K << std::endl << std::endl;
+     /*
+     if (X_tilda(2, i) == 0){
+       std::cout << "X" << X.col(i) << std::endl;
+       std::cout << "X_tilda" << X_tilda.col(i) << std::endl;
+       std::cout << G << std::endl;
+     }
+     */
+
+
      if (x_px < imsizeX && x_px >= 0 && y_px < imsizeY && y_px >= 0){
        if (d_img.rows > 0 && d_img.cols >0){
          //Get RGB color from pixel location
-         cv::Vec3b color = d_img.at<cv::Vec3b>(y_px,x_px);
+         cv::Vec3b color = d_img.at<cv::Vec3b>(x_px,y_px);
          //Add 3D point and color information to new color pointcloud
          //For some reason, the kinect organizes as such:
-         //x = z, y = -x, z = -y
-         CPC->points[i].x = X(2, i);
+         //x = y, y = -x, z = z
+         CPC->points[i].x = X(1, i);
          CPC->points[i].y = -X(0, i);
-         CPC->points[i].z = -X(1, i);
+         CPC->points[i].z = X(2, i);
+         //CPC->points[i].x = -X(1, i);
+         //CPC->points[i].y = X(0, i);
+         //CPC->points[i].z = X(2, i);
          CPC->points[i].r = color(2);
          CPC->points[i].g = color(1);
          CPC->points[i].b = color(0);
        }
      }
    }
+   //std::cout << d_img.size() << std::endl;
    //Publish color pointcloud
    pcl_conversions::toPCL(ros::Time::now(), CPC->header.stamp);
    color_pub.publish (CPC);
+
 
  }
 
