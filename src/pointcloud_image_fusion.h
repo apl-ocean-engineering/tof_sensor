@@ -76,8 +76,8 @@ class ImageFusion{
   sensor_msgs::Image image_;
   ros::Publisher color_pub = n.advertise<colorPointCloud>
                                           ("image_fusion/color_pointcloud", 1);
-  ros::Publisher image_pub_ = n.advertise<sensor_msgs::Image>
-                                                       ("projected_image", 30);
+  //ros::Publisher image_pub_ = n.advertise<sensor_msgs::Image>
+  //                                                     ("projected_image", 30);
 
   public:
     ImageFusion();
@@ -118,13 +118,13 @@ ImageFusion::ImageFusion() : CPC(new colorPointCloud), cloud(new pcl::PointCloud
   G(2,1) = 0.668;
   G(2,2) = -0.003;
   G(2,3) = T(2);
-  //G(3,3) = 1.0;
+  G(3,3) = 1.0;
 
 }
 
 void ImageFusion::pointcloud_callback_img_pub(const sensor_msgs::PointCloud2ConstPtr& input){
   ROS_INFO("here");
-  sensor_msgs::Image image_;
+  //sensor_msgs::Image image_;
   if ((input->width * input->height) == 0){
     return; //return if the cloud is not dense!
   }
@@ -136,8 +136,8 @@ void ImageFusion::pointcloud_callback_img_pub(const sensor_msgs::PointCloud2Cons
     ROS_ERROR_STREAM("Error in converting cloud to image message: "
                     << e.what());
   }
-  image_.header.frame_id = "map";
-  image_pub_.publish (image_); //publish our cloud image
+  //image_.header.frame_id = "map";
+  //image_pub_.publish (image_); //publish our cloud image
 }
 
 void ImageFusion::transform(){
@@ -190,7 +190,7 @@ void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs:
    float w = 1.0;
    //Create new colorpointcloud message type
 
-   CPC->header.frame_id = "map";
+   CPC->header.frame_id = "camera_rgb_optical_frame";
    CPC->points.resize(size);
    //Loop through all points in pointcloud to create large X matrix
    for (int i=0; i<size; i++){
@@ -205,41 +205,45 @@ void ImageFusion::pointcloud_callback(const boost::shared_ptr<const sensor_msgs:
    //Calculate image-plane points
    Eigen::Matrix3d trans;
    //trans << -1,0,0,0,1,0,0,0,1;
-   Eigen::MatrixXd X_tilda = K*G*X;
+   Eigen::MatrixXd X_tilda = K*G.inverse()*X;
    //std::cout << "X_tilda size : " << X_tilda.rows() << "," << X_tilda.cols() << std::endl;
    //std::cout << K << std::endl;
    //Loop through image points and populate color pointcloud
    for (int i = 0; i<X_tilda.cols(); i++){
      //Determine location in pixels
-     int x_px = (int) X_tilda(0, i)/X_tilda(2,i);
-     int y_px = (int) X_tilda(1, i)/X_tilda(2,i);
-     //std::cout << "G: " << G << std::endl << std::endl;
-     //std::cout << "K: " << K << std::endl << std::endl;
-     /*
-     if (X_tilda(2, i) == 0){
-       std::cout << "X" << X.col(i) << std::endl;
-       std::cout << "X_tilda" << X_tilda.col(i) << std::endl;
+     if (X_tilda(2,i) > 0){
+       int x_px = (int) X_tilda(0, i)/X_tilda(2,i);
+       int y_px = (int) X_tilda(1, i)/X_tilda(2,i);
+       //std::cout << "G: " << G << std::endl << std::endl;
+       //std::cout << "K: " << K << std::endl << std::endl;
+       /*
+       if (X(2, i) == 0){
+         std::cout << "X" << X.col(i) << std::endl;
+         std::cout << "X_tilda" << X_tilda.col(i) << std::endl;
+         std::cout << G << std::endl;
+       }
+       */
+       //std::cout << "Point: (" << x_px << "," << y_px << ")" << std::endl;
        std::cout << G << std::endl;
-     }
-     */
 
 
-     if (x_px < imsizeX && x_px >= 0 && y_px < imsizeY && y_px >= 0){
-       if (d_img.rows > 0 && d_img.cols >0){
-         //Get RGB color from pixel location
-         cv::Vec3b color = d_img.at<cv::Vec3b>(x_px,y_px);
-         //Add 3D point and color information to new color pointcloud
-         //For some reason, the kinect organizes as such:
-         //x = y, y = -x, z = z
-         CPC->points[i].x = X(1, i);
-         CPC->points[i].y = -X(0, i);
-         CPC->points[i].z = X(2, i);
-         //CPC->points[i].x = -X(1, i);
-         //CPC->points[i].y = X(0, i);
-         //CPC->points[i].z = X(2, i);
-         CPC->points[i].r = color(2);
-         CPC->points[i].g = color(1);
-         CPC->points[i].b = color(0);
+       if (x_px < imsizeX && x_px >= 0 && y_px < imsizeY && y_px >= 0){
+         if (d_img.rows > 0 && d_img.cols >0){
+           //Get RGB color from pixel location
+           cv::Vec3b color = d_img.at<cv::Vec3b>(y_px,x_px);
+           //Add 3D point and color information to new color pointcloud
+           //For some reason, the kinect organizes as such:
+           //x = y, y = -x, z = z
+           CPC->points[i].x = X(0, i);
+           CPC->points[i].y = X(1, i);
+           CPC->points[i].z = X(2, i);
+           //CPC->points[i].x = -X(1, i);
+           //CPC->points[i].y = X(0, i);
+           //CPC->points[i].z = X(2, i);
+           CPC->points[i].r = color(2);
+           CPC->points[i].g = color(1);
+           CPC->points[i].b = color(0);
+         }
        }
      }
    }
@@ -271,10 +275,10 @@ void ImageFusion::img_info_callback(const sensor_msgs::CameraInfo::ConstPtr& inf
   cx.data = info->K[2];
   cy.data = info->K[5];
   //Population intrinsic matrix
-  K(0,0) = fx.data;
-  K(0,1) = s.data;
-  K(0,2) = cx.data;
-  K(1,1) = fy.data;
-  K(1,2) = cy.data;
+  K(0,0) = 1.0;//fx.data;
+  K(0,1) = 1.0;//s.data;
+  K(0,2) = 1.0;//cx.data;
+  K(1,1) = 1.0;//fy.data;
+  K(1,2) = 1.0;//cy.data;
   K(2,2) = 1.0;
 }
