@@ -104,9 +104,6 @@ int main(int argc, char** argv){
                if (z > z_max){
                  z_max = z;
                }
-               if (z == 0){
-                 std::cout << "ZEROOOOOOO" << std::endl;
-               }
                msg->points[i].x = x;
                msg->points[i].y = y;
                msg->points[i].z = z;

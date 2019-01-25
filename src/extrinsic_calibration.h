@@ -2,6 +2,7 @@
 #include <vector>
 #include <stdio.h>
 #include <termios.h>
+#include <stdlib.h>
 
 #include "ros/ros.h"
 #include "sensor_msgs/Image.h"
@@ -50,7 +51,7 @@ using namespace cv;
 class ImageConverter
 {
   cv::Mat img;
-  cv::Size patternsize = cv::Size(8,6);
+  cv::Size patternsize = cv::Size(6,8);
   float checkerboardDist = .04826; //m
   int chessBoardFlags;
 
@@ -60,6 +61,7 @@ class ImageConverter
   std::string key_press; //Initalize variable to record which key was pressed
   std::vector<Eigen::MatrixXd> camera_transformation_vector;
   std::vector<Eigen::MatrixXd> depth_transformation_vector;
+  Eigen::Matrix3d coordinate_frame_transformation;
 
   //Trackbar (all in cm)
   int x_min = 0;
@@ -105,22 +107,38 @@ public:
   void keyboard_callback(const pcl::visualization::KeyboardEvent& event, void*);
   std::tuple<Eigen::VectorXd, Eigen::MatrixXd> calculate_extrinsic_paramaters();
   void static_frame_transformation();
+  std::tuple<Mat, Mat>  transformation_from_homography(std::vector<Mat> rotations, std::vector<Mat> translations, std::vector<Mat> normals, int board);
+  std::tuple<bool,Eigen::Matrix4d> planar_transformation(std::vector<Point2f> src_vec, std::vector<Point2f> dist_vec, int board);
+  std::vector<Point2f> matrix_to_vector(Eigen::MatrixXd X);
   void run();
 };
 
 ImageConverter::ImageConverter(): it_(nh_) {
+  coordinate_frame_transformation << 1,0,0,0,1,0,0,0,1;
   // Subscrive to input video feed and publish output video feed
   //K = Eigen::Matrix3d::Zero(3, 3);
   //Create board point vector, counterclockwise from bottom left
   //Just estimating for now...
+  double check_x = 0.6604; //41
+  double check_y = 0.8382; //36
   Xv.conservativeResize(4, Xv.cols()+1);
   Xv.col(Xv.cols()-1) =  Eigen::Vector4d(0.0, 0.0, 0.0, 1.0);
   Xv.conservativeResize(4, Xv.cols()+1);
-  Xv.col(Xv.cols()-1) = Eigen::Vector4d(0.0, 36.0, 0.0, 1.0);
+  Xv.col(Xv.cols()-1) = Eigen::Vector4d(0.0, check_y, 0.0, 1.0);
   Xv.conservativeResize(4, Xv.cols()+1);
-  Xv.col(Xv.cols()-1) = Eigen::Vector4d(41.0, 36.0, 0.0, 1.0);
+  Xv.col(Xv.cols()-1) = Eigen::Vector4d(check_x, check_y, 0.0, 1.0);
   Xv.conservativeResize(4, Xv.cols()+1);
-  Xv.col(Xv.cols()-1) = Eigen::Vector4d(41.0, 0.0, 0.0, 1.0);
+  Xv.col(Xv.cols()-1) = Eigen::Vector4d(check_x, 0.0, 0.0, 1.0);
+  /*
+  Xv.conservativeResize(3, Xv.cols()+1);
+  Xv.col(Xv.cols()-1) =  Eigen::Vector3d(0.0, 0.0, 1.0);
+  Xv.conservativeResize(3, Xv.cols()+1);
+  Xv.col(Xv.cols()-1) = Eigen::Vector3d(0.0, check_y, 1.0);
+  Xv.conservativeResize(3, Xv.cols()+1);
+  Xv.col(Xv.cols()-1) = Eigen::Vector3d(check_x, check_y, 1.0);
+  Xv.conservativeResize(3, Xv.cols()+1);
+  Xv.col(Xv.cols()-1) = Eigen::Vector3d(check_x, 0.0, 1.0);
+  */
 
   chessBoardFlags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE;
   image_sub_ = it_.subscribe("/camera/rgb/image_color", 1,
@@ -130,47 +148,6 @@ ImageConverter::ImageConverter(): it_(nh_) {
 
 ImageConverter::~ImageConverter(){
   cv::destroyWindow(OPENCV_WINDOW);
-}
-
-std::tuple<bool, Eigen::MatrixXd, Eigen::MatrixXd>
-                ImageConverter::chess_board_points(cv_bridge::CvImagePtr cv){
-  //Determine image plane coordinates of checkerboard corners
-  std::vector<cv::Point2f> checkerboard_points_vector; //Vector to record points
-  cv::Mat imgGray;
-  Eigen::MatrixXd Xi; //Image plane homogenous points
-  Eigen::MatrixXd Xw; //World plane homogenous points
-  //Determine if camera can see points
-  bool found = cv::findChessboardCorners(img, patternsize, checkerboard_points_vector,
-                                                    chessBoardFlags);
-  if (found){
-    //Find and draw checkerboard points
-    cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
-    cv::cornerSubPix(imgGray, checkerboard_points_vector, cv::Size(5,5), cv::Size(-1,-1),
-                cv::TermCriteria(cv::TermCriteria::EPS+cv::TermCriteria::COUNT,
-                30, 0.0001));
-    drawChessboardCorners(img, patternsize, cv::Mat(checkerboard_points_vector), found);
-    cv::waitKey(1);
-    for (int i=0;i<checkerboard_points_vector.size(); i++){
-      //Loop through vector and add points to inertial frame matrix
-      cv::Point2f point = checkerboard_points_vector.at(i);
-      Eigen::Vector3d X(point.x, point.y, 1);
-      Xi.conservativeResize(3, Xi.cols()+1);
-      Xi.col(Xi.cols()-1) = X;
-    }
-    float Z = 0.0;
-    float w = 1.0;
-    //Construct world points Xw
-    for (int i=0; i<patternsize.height; i++){
-      for(int j=0; j<patternsize.width; j++){
-        float X = j*checkerboardDist;
-        float Y = i*checkerboardDist;
-        Eigen::Vector4d Xp(X,Y,Z,w);
-        Xw.conservativeResize(4, Xw.cols()+1);
-        Xw.col(Xw.cols()-1) = Xp;
-      }
-    }
-  }
-  return std::make_tuple(found, Xi, Xw);
 }
 
 void ImageConverter::imageCb(const sensor_msgs::ImageConstPtr& msg){
@@ -213,12 +190,12 @@ void ImageConverter::mouse_callback(const pcl::visualization::MouseEvent
   //2D mouse click callback
   if (event.getButton() == pcl::visualization::MouseEvent::LeftButton &&
       event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease){
-        std::cout << "Left mouse button released at position ("
-                      << event.getX() << ", " << event.getY() << ")"
-                      << std::endl;
-        clickedPoint.x = event.getX();
-        clickedPoint.y = event.getY();
-      }
+    std::cout << "Left mouse button released at position ("
+                  << event.getX() << ", " << event.getY() << ")"
+                  << std::endl;
+    clickedPoint.x = event.getX();
+    clickedPoint.y = event.getY();
+  }
 }
 
 void ImageConverter::points3D_callback
@@ -232,8 +209,10 @@ void ImageConverter::points3D_callback
     std::cout << "(x: " << x << " y: " << y << " z: " << z << ")" << std::endl;
     ROS_INFO("Press r to remove the last point");
     //Add point to Depth sensor matrix
-    Xd.conservativeResize(4, Xd.cols()+1);
-    Xd.col(Xd.cols()-1) =  Eigen::Vector4d(x, y, z, 1.0);
+    Xd.conservativeResize(3, Xd.cols()+1);
+    Eigen::Vector3d x_(x/z, y/z, 1.0);
+    Eigen::Vector3d x_hat = coordinate_frame_transformation*x_;
+    Xd.col(Xd.cols()-1) =  x_hat;
   }
 }
 
@@ -246,93 +225,269 @@ void ImageConverter::keyboard_callback
   }
 }
 
+std::vector<Point2f> ImageConverter::matrix_to_vector(Eigen::MatrixXd X){
+  std::vector<Point2f> X_vec;
+
+  for (int i=0; i<X.cols(); i++){
+    Point2f p;
+    p.x = X(0, i);
+    p.y = X(1, i);
+    X_vec.push_back(p);
+  }
+
+  return X_vec;
+}
+
+std::tuple<bool, Eigen::MatrixXd, Eigen::MatrixXd>
+                ImageConverter::chess_board_points(cv_bridge::CvImagePtr cv){
+  //Determine image plane coordinates of checkerboard corners
+  std::vector<cv::Point2f> checkerboard_points_vector; //Vector to record points
+  cv::Mat imgGray;
+  Eigen::MatrixXd Xi; //Image plane homogenous points
+  Eigen::MatrixXd Xw; //World plane homogenous points
+  //Determine if camera can see points
+  bool found = cv::findChessboardCorners(img, patternsize, checkerboard_points_vector,
+                                                    chessBoardFlags);
+  if (found){
+    //Find and draw checkerboard points
+    //std::cout << checkerboard_points_vector << std::endl;
+    cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
+    cv::cornerSubPix(imgGray, checkerboard_points_vector, cv::Size(5,5), cv::Size(-1,-1),
+                cv::TermCriteria(cv::TermCriteria::EPS+cv::TermCriteria::COUNT,
+                30, 0.0001));
+    drawChessboardCorners(img, patternsize, cv::Mat(checkerboard_points_vector), found);
+    std::vector<cv::Point2f> checkerboard_points_vector_meters;
+    //TODO compress this loops
+    for (int i=0;i<checkerboard_points_vector.size();i++){
+      Point2f p;
+      Eigen::Vector3d X_px(checkerboard_points_vector.at(i).x, checkerboard_points_vector.at(i).y, 1);
+      Eigen::Vector3d X_m = K.inverse()*X_px;
+      p.x = X_m(0);
+      p.y = X_m(1);
+      //p.x = X_px(0);
+      //p.y = X_px(1);
+      checkerboard_points_vector_meters.push_back(p);
+      //std::cout << i << std::endl;
+      //circle(img, checkerboard_points_vector.at(i), 10, Scalar(0, 255, 255));
+      //imshow(OPENCV_WINDOW, img);
+      //waitKey(100);
+    }
+
+
+    cv::waitKey(1);
+    for (int i=0;i<checkerboard_points_vector_meters.size(); i++){
+      //Loop through vector and add points to inertial frame matrix
+      cv::Point2f point = checkerboard_points_vector_meters.at(i);
+      Eigen::Vector3d X(point.x, point.y, 1);
+      Xi.conservativeResize(3, Xi.cols()+1);
+      Xi.col(Xi.cols()-1) = X;
+    }
+    float Z = 0.0;
+    float w = 1.0;
+    //Construct world points Xw
+    for (int i=0; i<patternsize.height; i++){
+      for(int j=0; j<patternsize.width; j++){
+        float X = j*checkerboardDist;
+        float Y = patternsize.height*checkerboardDist - (i+1)*checkerboardDist;
+        Eigen::Vector3d Xp(X,Y,w);
+        Xw.conservativeResize(3, Xw.cols()+1);
+        Xw.col(Xw.cols()-1) = Xp;
+      }
+    }
+  }
+  //std::cout << Xw << std::endl;
+  return std::make_tuple(found, Xi, Xw);
+}
+
+std::tuple<bool,Eigen::Matrix4d> ImageConverter::planar_transformation(std::vector<Point2f> src_vec, std::vector<Point2f> dst_vec, int board){
+
+  Eigen::Matrix4d G = Eigen::Matrix4d::Zero(4,4);
+  if (src_vec.size() != dst_vec.size()){
+    ROS_ERROR("CANNOT CALCULATE HOMOGRAPHY WITH UNEQUAL POINTS");
+    return std::make_tuple(false,G);
+  }
+  /************
+  FOR DEBUGGING
+  ************/
+  std::vector<Point2f> pass_vec;
+  for (int i=0; i<src_vec.size(); i++){
+    Point2f p;
+    float r1 = -0.001 + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(.002)));
+    float r2 = -0.001 + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(.002)));
+    //double r1d = (double) r1/10.0;
+    //double r2d = (double) r2/10.0;
+    p.x = src_vec.at(i).x + r1;
+    p.y = src_vec.at(i).y + r2;
+    pass_vec.push_back(p);
+  }
+  /**/
+  Mat H = findHomography(src_vec, dst_vec);
+  std::cout << "src_vec:  " << endl <<  src_vec << std::endl << std::endl;
+  std::cout << "dst_vec:  " << endl <<  dst_vec << std::endl << std::endl;
+  std::cout << "Homography:  " << endl <<  H << std::endl << std::endl;
+  std::vector<Mat> rotations;
+  std::vector<Mat> translations;
+  std::vector<Mat> normals;
+  Eigen::Matrix3d K_ = Eigen::Matrix3d::Identity(3,3);
+  Mat K_mat(3,3, CV_8U);
+  //cv2eigen(K_mat, K_);
+  eigen2cv(K_, K_mat);
+
+  decomposeHomographyMat(H, K_mat, rotations, translations, normals);
+  Mat R;
+  Mat T;
+  /*
+  if (rotations.size() == 1){
+    R = rotations.at(0);
+    T = translations.at(0);
+    std::cout << "R :" << std::endl << R << std::endl << std::endl;
+  }
+  */
+  if (rotations.size() == 4){
+    std::tuple<Mat, Mat> transformation = transformation_from_homography(rotations, translations, normals, board);
+    R = std::get<0>(transformation);
+    T = std::get<1>(transformation);
+
+    //std::cout << rotations.size() << "," << translations.size() << std::endl;
+  }
+  else {
+    ROS_ERROR("NOT FOUR POSSIBLE ROTATIONS");
+    std::cout << "rotations: " << std::endl << rotations.size() << std::endl << std::endl;
+
+    return std::make_tuple(false,G);
+  }
+
+  G(0,0) = R.at<double>(0,0);
+  G(0,1) = R.at<double>(0,1);
+  G(0,2) = R.at<double>(0,2);
+  G(0,3) = T.at<double>(0,0);
+  G(1,0) = R.at<double>(1,0);
+  G(1,1) = R.at<double>(1,1);
+  G(1,2) = R.at<double>(1,2);
+  G(1,3) = T.at<double>(1,0);
+  G(2,0) = R.at<double>(2,0);
+  G(2,1) = R.at<double>(2,1);
+  G(2,2) = R.at<double>(2,2);
+  G(2,3) = T.at<double>(2,0);
+  G(3,3) = 1.0;
+  return std::make_tuple(true, G);
+
+}
+
+std::tuple<Mat, Mat> ImageConverter::transformation_from_homography(
+              std::vector<Mat> rotations, std::vector<Mat> translations,
+                                              std::vector<Mat> normals, int board){
+
+    Mat R;
+    Mat T;
+    assert(rotations.size() == 4);
+    int transformation_num = 0;
+    float max_n1 = -1.0;
+    float max_n2 = -1.0;
+    //float min_n = 1.0;
+    for (int i=0; i<4; i++){
+      Mat r = rotations.at(i);
+      Mat t = translations.at(i);
+      Mat n = normals.at(i);
+      Eigen::MatrixXd R_;
+      Eigen::VectorXd T_;
+      cv2eigen(r, R_);
+      cv2eigen(t, T_);
+
+      if (board == 1){
+        if (t.at<double>(2,0) > 0){
+          //We want the dot product between [0,0,1]^T and 'n' to equal 0
+          //Choose largest smallest third n value
+          if (n.at<double>(2,0) > max_n1){
+            std::cout << "n: " << std::endl << n << std::endl << std::endl;
+            std::cout << "t: " << std::endl << t << std::endl << std::endl;
+            std::cout << "R: " << std::endl << r << std::endl << std::endl;
+            std::cout << "R*t: " << R_*T_ << std::endl << std::endl;
+            max_n1 = n.at<double>(2,0);
+            //std::cout << "max_n: " << max_n << std::endl << std::endl;
+            transformation_num = i;
+          }
+        }
+      }
+      else if(board == 2){
+        if (t.at<double>(2,0) < 0){
+          if (n.at<double>(2,0) > max_n2){
+            std::cout << "n: " << std::endl << n << std::endl << std::endl;
+            std::cout << "t: " << std::endl << t << std::endl << std::endl;
+            std::cout << "R: " << std::endl << r << std::endl << std::endl;
+            std::cout << "R*t: " << R_*T_ << std::endl << std::endl;
+            max_n2 = n.at<double>(2,0);
+            std::cout << "max_n: " << max_n2 << std::endl;
+            transformation_num = i;
+          }
+        }
+      }
+    }
+    R = rotations.at(transformation_num);
+    T = translations.at(transformation_num);
+
+    return std::make_tuple(R,T);
+}
+
+
 void ImageConverter::static_frame_transformation(){
-  //Determine a scaled rotation and translation between frames from one static frame
-  std::tuple<bool, Eigen::MatrixXd,Eigen::MatrixXd> chess_points = chess_board_points(cv_ptr);
+  /*****************************************************************************
+  Determine a scaled rotation and translation between frames from one static frame
+  *****************************************************************************/
+  //Find checkerboard points in image frame
+  std::tuple<bool, Eigen::MatrixXd, Eigen::MatrixXd> chess_points = chess_board_points(cv_ptr);
   bool found = std::get<0>(chess_points);
   Eigen::MatrixXd Xi = std::get<1>(chess_points); //Image plane homogenous points
   Eigen::MatrixXd Xw = std::get<2>(chess_points); //World plane homogenous points
-
-  /* 90% sure I don't need this here...
-  if (Xd.cols() != Xv.cols()){
-    //Need to select four points
-    ROS_ERROR("UNEQUAL POINTS SELECTED IN DEPTH CAMERA.");
-    return ;
-  }
-  */
-
-
+  //Handle some common problems
   if (!found){
     ROS_ERROR("CHECKERBOARD NOT VISIBLE");
     return ;
   }
 
-  if (Xw.rows() != 4){
+  if (Xd.cols() != 4){
+    std::cout << Xd << std::endl;
     ROS_ERROR("MUST SELCT THE FOUR CHECKERBOARD CORNERS");
     return ;
   }
-  std::vector<Point2f> Xi_vec;
-  std::vector<Point2f> Xw_vec;
-  for (int i=0; i<Xi.cols(); i++){
-    Point2f pi;
-    pi.x = Xi(0, i);
-    pi.y = Xi(1, i);
-    Xi_vec.push_back(pi);
-    Point2f pw;
-    pw.x = Xw(0, i);
-    pw.y = Xw(1, i);
-    Xw_vec.push_back(pw);
-  }
+  /***********************************
+  Color camera to plane transformation
+  ***********************************/
+  std::vector<Point2f> Xi_vec = matrix_to_vector(Xi);
+  std::vector<Point2f> Xw_vec = matrix_to_vector(Xw);
 
-  //Get camera transformation
-  //Eigen::MatrixXd Xi_pinv = Xi.completeOrthogonalDecomposition().pseudoInverse();
-  //Eigen::MatrixXd Xw_pinv = Xw.completeOrthogonalDecomposition().pseudoInverse();
-  //std::cout << Xw_pinv.rows() << "," << Xw_pinv.cols() << std::endl;
-  //std::cout << K.inverse()*Xi*Xw_pinv << std::endl;
-  //Find the inverse transformation, transform back to frame
+  //Get transformation
+  std::tuple<bool, Eigen::MatrixXd> color_camera = planar_transformation(Xi_vec, Xw_vec, 1);
+  bool good_color_transform = std::get<0>(color_camera);
+  Eigen::Matrix4d color_camera_transformation = std::get<1>(color_camera);
+  std::cout << "camera trans: " << std::endl << color_camera_transformation << std::endl << std::endl;
+  /***********************************
+  TOF to plane transformation
+  ***********************************/
+  std::vector<Point2f> Xd_vec = matrix_to_vector(Xd);
+  //std::cout << "xd_vec" << Xd_vec << std::endl;
+  std::vector<Point2f> Xv_vec = matrix_to_vector(Xv);
+  //std::cout << "xv_vec" << Xv_vec << std::endl;
+  //Get transformation
+  std::tuple<bool, Eigen::MatrixXd> depth_camera = planar_transformation(Xd_vec, Xv_vec, 2);
+  bool good_depth_transform = std::get<0>(depth_camera);
+  Eigen::Matrix4d depth_camera_transformation = std::get<1>(depth_camera);
+  //Eigen::MatrixXd Xv_pinv = Xv.completeOrthogonalDecomposition().pseudoInverse();
+  //Eigen::MatrixXd depth_camera_transformation = Xd*Xv_pinv;
+  std::cout << "depth trans: " << std::endl << depth_camera_transformation << std::endl << std::endl;
 
-  //Eigen::MatrixXd color_camera_transformation =
-              //(Xw*Xi_pinv*K).completeOrthogonalDecomposition().pseudoInverse();
-  //Eigen::MatrixXd color_camera_transformation =
-                          //K.inverse()*Xi*(Xw.completeOrthogonalDecomposition().pseudoInverse());
-  //std::cout << "camera_trans: " << std::endl << color_camera_transformation << std::endl << std::endl;
-  //Calculate (Col 3 is all zeros due to depth ambiguity)
-  Mat H = findHomography(Xi_vec, Xw_vec);
-
-  std::vector<Mat> rotations;
-  std::vector<Mat> translations;
-  std::vector<Mat> normals;
-  Eigen::Matrix3d K_ = K;
-  Mat K_mat(3,3, CV_8U);
-  cv2eigen(K_mat, K_);
-
-  decomposeHomographyMat(H, K_mat, rotations, translations, normals);
-  Mat R = rotations.at(0);
-  Mat T = translations.at(0);
-  //std::cout << rotations.size() << "," << translations.size() << std::endl;
-  Eigen::Matrix4d color_camera_transformation = Eigen::Matrix4d::Zero(4,4);
-
-  color_camera_transformation(0,0) = R.at<double>(0,0);
-  color_camera_transformation(0,1) = R.at<double>(0,1);
-  color_camera_transformation(0,2) = R.at<double>(0,2);
-  color_camera_transformation(0,3) = T.at<double>(0,0);
-  color_camera_transformation(1,0) = R.at<double>(1,0);
-  color_camera_transformation(1,1) = R.at<double>(1,1);
-  color_camera_transformation(1,2) = R.at<double>(1,2);
-  color_camera_transformation(1,3) = T.at<double>(1,0);
-  color_camera_transformation(2,0) = R.at<double>(2,0);
-  color_camera_transformation(2,1) = R.at<double>(2,1);
-  color_camera_transformation(2,2) = R.at<double>(2,2);
-  color_camera_transformation(2,3) = T.at<double>(2,0);
-  color_camera_transformation(3,3) = 1.0;
-
-  Eigen::MatrixXd Xv_pinv = Xv.completeOrthogonalDecomposition().pseudoInverse();
-  Eigen::MatrixXd depth_camera_transformation = Xd*Xv_pinv;
   //Record transformation
-  camera_transformation_vector.push_back(color_camera_transformation);
-  std::cout << "camera trans: " << color_camera_transformation << std::endl << std::endl;
-  depth_transformation_vector.push_back(depth_camera_transformation);
-  ROS_INFO("POINTS RECORDED");
+  if(good_color_transform && good_depth_transform){
+    //int age;
+    //cin >> age;
+    //std::cout << age << std::endl;
+    camera_transformation_vector.push_back(color_camera_transformation);
+    depth_transformation_vector.push_back(depth_camera_transformation);
+    ROS_INFO("POINTS RECORDED");
+  }
+  else{
+    ROS_INFO("BAD POINTS, IGNORED");
+  }
 }
 
 std::tuple<Eigen::VectorXd, Eigen::MatrixXd>
@@ -355,17 +510,20 @@ std::tuple<Eigen::VectorXd, Eigen::MatrixXd>
     //Get transformation matricies
     Eigen::MatrixXd Gc = camera_transformation_vector.at(i);
     Eigen::MatrixXd Gd = depth_transformation_vector.at(i);
-    std::cout << "Gc: " << std::endl << Gc << std::endl << std::endl;
+    //std::cout << "Gc: " << std::endl << Gc << std::endl << std::endl;
     //Isolate 't' vectors
     Eigen::Vector3d t_c(Gc(0,3), Gc(1,3), Gc(2,3));
     Eigen::Vector3d t_d(Gd(0,3), Gd(1,3), Gd(2,3));
     //M matricies
     Eigen::Vector3d r_c(Gc(0,2), Gc(1,2), Gc(2,2));
-    std::cout << "rc: " << std::endl << r_c << std::endl << std::endl;
+
     Mc.conservativeResize(3, Mc.cols()+1);
     Mc.col(i) = r_c;
-    std::cout << "Mc1: " << std::endl << Mc << std::endl << std::endl;
+
     Eigen::Vector3d r_d(Gd(0,2), Gd(1,2), Gd(2,2));
+    std::cout << "rd: " << std::endl << r_d << std::endl << std::endl;
+    std::cout << "Md1: " << std::endl << Md << std::endl << std::endl;
+    std::cout << "Mc1: " << std::endl << Mc << std::endl << std::endl;
     Md.conservativeResize(3, Md.cols()+1);
     Md.col(i) = r_d;
     //b vectors
@@ -374,9 +532,12 @@ std::tuple<Eigen::VectorXd, Eigen::MatrixXd>
     b_d.conservativeResize(1, b_d.cols()+1);
     b_d.col(i) = r_d.transpose()*t_d;
   }
+
   //Calculate rotation and transformation
-  std::cout << Mc << std::endl;
-  translation = (Mc*Mc.transpose()).inverse()*Mc*(b_c-b_d); //We got translation!
+  //std::cout << "Mc: " << std::endl << Mc << std::endl;
+  std::cout << "Md: " << std::endl << Md << std::endl;
+  std::cout << "Mc: " << std::endl << Mc << std::endl;
+  translation = (Mc*Mc.transpose()).inverse()*Mc*(b_c-b_d).transpose(); //We got translation!
   Eigen::MatrixXd R = Md*(Mc.transpose()); //Don't quite have R though...
   //Need to adjust for error. Turn R into orthonormal matrix through svd...
   //...with S matrix == I
@@ -384,8 +545,6 @@ std::tuple<Eigen::VectorXd, Eigen::MatrixXd>
                               svd(R, Eigen::ComputeThinU | Eigen::ComputeThinV);
   rotation = svd.matrixU()*(svd.matrixV().transpose()); //Final rotation
   return std::make_tuple(translation, rotation);
-
-
 }
 
 void ImageConverter::run(){
@@ -458,6 +617,7 @@ void ImageConverter::run(){
       if (key_press == "r"){
         //If r has been pushed, remove most recent entry
         Xd.conservativeResize(Xd.rows(), Xd.cols()-1);
+        ROS_INFO("POINT REMOVED");
         key_press = " ";
       }
 
@@ -465,7 +625,7 @@ void ImageConverter::run(){
         //If s has been pushed, calculate [R,T] for 1 frame, for for each
         //of the sensors to their respective frames
         static_frame_transformation();
-        //Xd.conservativeResize(0,0);
+        Xd.conservativeResize(0,0);
         key_press = " ";
       }
 
@@ -478,6 +638,42 @@ void ImageConverter::run(){
         std::cout << "R: " << R << std::endl;
         std::cout << "t: " << t << std::endl;
         key_press = " ";
+      }
+
+      else if (key_press == "l"){
+        /******************************
+        PRACTICE FOR DEBUGGING
+        ******************************/
+        Eigen::MatrixXd C = Eigen::Matrix4d::Identity(4,4);
+        camera_transformation_vector.push_back(C);
+        depth_transformation_vector.push_back(C);
+        C(0,0) = 0;
+        C(0,1) = 1;
+        C(1,1) = 0;
+        C(2,1) = 1;
+        C(2,2) = 0;
+        C(0,2) = 1;
+        camera_transformation_vector.push_back(C);
+        depth_transformation_vector.push_back(C);
+        C(0,1) = 1;
+        C(0,1) = 0;
+        C(2,0) = 1;
+        C(2,1) = 0;
+        C(1,2) = 1;
+        C(0,2) = 0;
+        //camera_transformation_vector
+        camera_transformation_vector.push_back(C);
+        depth_transformation_vector.push_back(C);
+
+
+        std::tuple<Eigen::VectorXd,Eigen::MatrixXd> G =
+                                              calculate_extrinsic_paramaters();
+        Eigen::VectorXd t = std::get<0>(G); //Translation
+        Eigen::MatrixXd R = std::get<1>(G); //Rotation
+        std::cout << "R: " << R << std::endl;
+        std::cout << "t: " << t << std::endl;
+        key_press = " ";
+
       }
 
       if (img.rows > 60 && img.cols > 60){
