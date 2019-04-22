@@ -31,7 +31,7 @@ class image_republish:
         except CvBridgeError as e:
           print(e)
           
-        #cv_image = cv2.flip(cv_image, -1)  
+        cv_image = cv2.flip(cv_image, -1)  
         try:
           self.img = self.bridge.cv2_to_imgmsg(cv_image, "mono8")
         except CvBridgeError as e:

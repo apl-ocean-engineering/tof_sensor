@@ -8,13 +8,13 @@ ExtrinsicCalibration::ExtrinsicCalibration(std::string image_topic) : it_(nh_) {
   Just estimating for now...
   **********************************************************/
   Xv.conservativeResize(4, Xv.cols() + 1);
-  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(0.0, 0.0, 0.0, 1.0);
+  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(check_x / 2, check_y / 2, 0.0, 1.0);
   Xv.conservativeResize(4, Xv.cols() + 1);
-  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(0.0, check_y, 0.0, 1.0);
+  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(-check_x / 2, check_y / 2, 0.0, 1.0);
   Xv.conservativeResize(4, Xv.cols() + 1);
-  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(check_x, check_y, 0.0, 1.0);
+  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(-check_x / 2, -check_y / 2, 0.0, 1.0);
   Xv.conservativeResize(4, Xv.cols() + 1);
-  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(check_x, 0.0, 0.0, 1.0);
+  Xv.col(Xv.cols() - 1) = Eigen::Vector4d(check_x / 2, -check_y / 2, 0.0, 1.0);
 
   chessBoardFlags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE;
   image_sub_ =
@@ -32,11 +32,17 @@ void ExtrinsicCalibration::img_info_callback(
   /**********************************************************
   ROS callback. Turn ROS camera info message intrinsic matrix
   **********************************************************/
-  fx.data = info->K[0];
-  s.data = info->K[1];
-  fy.data = info->K[4];
-  cx.data = info->K[2];
-  cy.data = info->K[5];
+  // fx.data = info->K[0];
+  // s.data = info->K[1];
+  // fy.data = info->K[4];
+  // cx.data = info->K[2];
+  // cy.data = info->K[5];
+  // FOR RECT USE P
+  fx.data = info->P[0];
+  s.data = info->P[1];
+  fy.data = info->P[5];
+  cx.data = info->P[2];
+  cy.data = info->P[6];
   // Population intrinsic matrix
   K << fx.data, s.data, cx.data, fy.data, cy.data;
   K(2, 2) = 1.0;
@@ -78,6 +84,7 @@ void ExtrinsicCalibration::points3D_callback(
     // Add point to Xd matrix
     Xd.conservativeResize(3, Xd.cols() + 1);
     Eigen::Vector3d x_(x / z, y / z, 1.0);
+    // Eigen::Vector3d x_(x - check_x / 2, -y + check_y / 2, 1.0);
     Xd.col(Xd.cols() - 1) = x_;
   }
 }
@@ -124,6 +131,8 @@ ExtrinsicCalibration::chess_board_points() {
   // Determine if camera can see points
   bool found = cv::findChessboardCorners(
       img, patternsize, checkerboard_points_vector, chessBoardFlags);
+  std::reverse(std::begin(checkerboard_points_vector),
+               std::end(checkerboard_points_vector));
 
   // Find and draw checkerboard points
   if (found) {
@@ -132,6 +141,15 @@ ExtrinsicCalibration::chess_board_points() {
         imgGray, checkerboard_points_vector, cv::Size(5, 5), cv::Size(-1, -1),
         cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 30,
                          0.0001));
+    /*
+    for (int i = 0; i < checkerboard_points_vector.size(); i++) {
+      cv::Point2f point = checkerboard_points_vector.at(i);
+      cv::circle(img, point, 10, 255);
+      cv::imshow(OPENCV_WINDOW, img);
+      cv::waitKey(100);
+    }
+    */
+
     drawChessboardCorners(img, patternsize, cv::Mat(checkerboard_points_vector),
                           found);
 
@@ -143,14 +161,34 @@ ExtrinsicCalibration::chess_board_points() {
       Eigen::Vector3d X_px(checkerboard_points_vector.at(i).x,
                            checkerboard_points_vector.at(i).y, 1);
       Eigen::Vector3d X_m = K.inverse() * X_px;
-      Eigen::Vector3d X(X_m(0) / X_m(2), X_m(1) / X_m(2), 1);
+      float _x = (checkerboard_points_vector.at(i).x - K(0, 2)) / K(0, 0);
+      float _y = (checkerboard_points_vector.at(i).y - K(1, 2)) / K(0, 0);
+      // Eigen::Vector3d X(X_m(0), X_m(1), 1);
+      Eigen::Vector3d X(_x, _y, 1);
       // std::cout << "image" << X_px << std::endl << std::endl;
       // std::cout << "world" << X << std::endl << std::endl;
       Xi.conservativeResize(3, Xi.cols() + 1);
       Xi.col(Xi.cols() - 1) = X;
+      // Xi.col(Xi.cols() - 1) = X_px;
     }
 
     float w = 1.0;
+    // PUT ORIGIN AT LOWER RIGHT FLIPPED
+    for (int i = 0; i < patternsize.height; i++) {
+      for (int j = 0; j < patternsize.width; j++) {
+        float X =
+            patternsize.width * checkerboardDist - (j + 1) * checkerboardDist;
+        float Y = i * checkerboardDist;
+        X -= patternsize.width * checkerboardDist / 2 - checkerboardDist / 2;
+        Y -= patternsize.height * checkerboardDist / 2 - checkerboardDist / 2;
+        Y *= -1;
+        Eigen::Vector3d Xp(X, Y, w);
+        // std::cout << Xp << std::endl;
+        Xw.conservativeResize(3, Xw.cols() + 1);
+        Xw.col(Xw.cols() - 1) = Xp;
+      }
+    }
+    /*
     // Construct world points Xw
     for (int i = 0; i < patternsize.height; i++) {
       for (int j = 0; j < patternsize.width; j++) {
@@ -168,6 +206,7 @@ ExtrinsicCalibration::chess_board_points() {
         Xw.col(Xw.cols() - 1) = Xp;
       }
     }
+    */
   }
 
   return std::make_tuple(found, Xi, Xw);
@@ -182,7 +221,7 @@ std::tuple<Mat, Mat> ExtrinsicCalibration::transformation_from_homography(
   Mat R;
   Mat T;
   int transformation_num = 0;
-  float max_n1 = 1.0;
+  float max_n1 = -1.0;
   float max_n2 = -1.0;
   // Run through four solutions to find correct solution
   for (int i = 0; i < 4; i++) {
@@ -205,9 +244,9 @@ std::tuple<Mat, Mat> ExtrinsicCalibration::transformation_from_homography(
       */
 
       // Verify positive z direction
-      if (t.at<double>(2, 0) < 0) {
+      if (t.at<double>(2, 0) > 0) {
         // Largest dot product between n and [0,0,1]^T occurs at max n(2)
-        if (n.at<double>(2, 0) < max_n1) {
+        if (n.at<double>(2, 0) > max_n1) {
           max_n1 = n.at<double>(2, 0);
           transformation_num = i;
         }
@@ -255,6 +294,12 @@ ExtrinsicCalibration::planar_transformation(const std::vector<Point2f> src_vec,
   }
   // Find Homography
   Mat H = findHomography(src_vec, dst_vec);
+  // std::cout << "H: " << H << std::endl;
+  for (int i = 0; i < src_vec.size(); i++) {
+    std::cout << "board: " << board << " pt1: " << src_vec.at(i)
+              << " pt2: " << dst_vec.at(i) << std::endl
+              << std::endl;
+  }
 
   std::vector<Mat> rotations;
   std::vector<Mat> translations;
@@ -313,7 +358,7 @@ void ExtrinsicCalibration::static_frame_transformation() {
   }
 
   if (Xd.cols() != 4) {
-    std::cout << Xd << std::endl;
+    // std::cout << Xd << std::endl;
     ROS_ERROR("MUST SELCT THE FOUR CHECKERBOARD CORNERS");
     return;
   }
@@ -411,7 +456,8 @@ ExtrinsicCalibration::calculate_extrinsic_paramaters() {
   }
   // Calculate rotation and transformation
   translation = (Mc * Mc.transpose()).inverse() * Mc *
-                (b_c - b_d).transpose();     // We got translation!
+                (b_c - b_d).transpose(); // We got translation!
+  std::cout << "Md: " << Md << " Mc: " << Mc << std::endl << std::endl;
   Eigen::MatrixXd R = Md * (Mc.transpose()); // Don't quite have R though...
 
   /*******************************************************************
@@ -522,6 +568,7 @@ void ExtrinsicCalibration::run() {
         camera_transformation_vector.pop_back();
         depth_transformation_vector.pop_back();
         ROS_INFO("POINT REMOVED");
+        Xd.conservativeResize(0, 0);
         key_press = " ";
       }
 
