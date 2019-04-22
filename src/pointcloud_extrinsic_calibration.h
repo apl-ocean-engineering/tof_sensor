@@ -13,7 +13,9 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/random_sample.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/registration/transformation_estimation_svd.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl_ros/point_cloud.h>
 
@@ -30,8 +32,8 @@ class PointcloudExtrinsic {
   PointCloudT cloudLeft;
   PointCloudT cloudRight;
 
-  Eigen::MatrixXd leftPc_ponts;
-  Eigen::MatrixXd rightPc_ponts;
+  Eigen::MatrixXf leftPc_ponts;
+  Eigen::MatrixXf rightPc_ponts;
   bool update_left;
   bool update_right;
 

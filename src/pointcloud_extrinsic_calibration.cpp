@@ -24,7 +24,7 @@ void PointcloudExtrinsic::PointcloudRigtCallback(
 void PointcloudExtrinsic::points3D_callbackLeft(
     const pcl::visualization::PointPickingEvent &event, void *) {
   /*********************************************************
-  PCL callback. Add PCL point click to Xd point click matrix
+  PCL callback. Add PCL point click to Xf point click matrix
   *********************************************************/
   float x, y, z;
   if (event.getPointIndex() != -1) {
@@ -33,17 +33,17 @@ void PointcloudExtrinsic::points3D_callbackLeft(
     ROS_INFO("Left PointCloud point selected: ");
     std::cout << "(x: " << x << " y: " << y << " z: " << z << ")" << std::endl;
     ROS_INFO("Press r to remove the last point");
-    // Add point to Xd matrix
-    leftPc_ponts.conservativeResize(4, leftPc_ponts.cols() + 1);
-    Eigen::Vector4d x_(x, y, z, 1.0);
-    leftPc_ponts.col(leftPc_ponts.cols() - 1) = x_;
+    // Add point to Xf matrix
+    leftPc_points.conservativeResize(4, leftPc_points.cols() + 1);
+    Eigen::Vector4f x_(x, y, z, 1.0);
+    leftPc_points.col(leftPc_points.cols() - 1) = x_;
   }
 }
 
 void PointcloudExtrinsic::points3D_callbackRight(
     const pcl::visualization::PointPickingEvent &event, void *) {
   /*********************************************************
-  PCL callback. Add PCL point click to Xd point click matrix
+  PCL callback. Add PCL point click to Xf point click matrix
   *********************************************************/
   float x, y, z;
   if (event.getPointIndex() != -1) {
@@ -52,10 +52,10 @@ void PointcloudExtrinsic::points3D_callbackRight(
     ROS_INFO("Right PointCloud point selected: ");
     std::cout << "(x: " << x << " y: " << y << " z: " << z << ")" << std::endl;
     ROS_INFO("Press r to remove the last point");
-    // Add point to Xd matrix
-    rightPc_ponts.conservativeResize(4, rightPc_ponts.cols() + 1);
-    Eigen::Vector4d x_(x, y, z, 1.0);
-    rightPc_ponts.col(rightPc_ponts.cols() - 1) = x_;
+    // Add point to Xf matrix
+    rightPc_points.conservativeResize(4, rightPc_points.cols() + 1);
+    Eigen::Vector4f x_(x, y, z, 1.0);
+    rightPc_points.col(rightPc_points.cols() - 1) = x_;
   }
 }
 
@@ -175,26 +175,36 @@ void PointcloudExtrinsic::run() {
     }
 
     if (key_press == "r") {
-      leftPc_ponts.conservativeResize(leftPc_ponts.rows(),
-                                      leftPc_ponts.cols() - 1);
-      rightPc_ponts.conservativeResize(rightPc_ponts.rows(),
-                                       rightPc_ponts.cols() - 1);
+      leftPc_points.conservativeResize(leftPc_points.rows(),
+                                       leftPc_points.cols() - 1);
+      rightPc_points.conservativeResize(rightPc_points.rows(),
+                                        rightPc_points.cols() - 1);
       ROS_INFO("POINT REMOVED");
       key_press = " ";
     }
     // std::cout << key_press << std::endl;
     if (key_press == "f") {
-      // std::cout << "left: " << leftPc_ponts << std::endl;
-      // std::cout
-      //     << "right psuedo: "
-      //     << rightPc_ponts.completeOrthogonalDecomposition().pseudoInverse()
-      //     << std::endl;
-      Eigen::MatrixXd right_PI =
-          rightPc_ponts.completeOrthogonalDecomposition().pseudoInverse();
-      // std::cout << "LEFT: " leftPc_ponts.rows() << " X " << right_PI.size()
-      //           << std::endl;
-      Eigen::MatrixXd G = leftPc_ponts * right_PI;
-      std::cout << G << std::endl;
+      PointCloudT::Ptr leftPC(new PointCloudT);
+      leftPC->points.resize(leftPc_points.cols());
+      PointCloudT::Ptr rightPC(new PointCloudT);
+      rightPC->points.resize(rightPc_points.cols());
+      for (int i = 0; i < rightPc_points.cols(); ++i) {
+        leftPC->points.at(i).x = leftPc_points.col(i)[0];
+        leftPC->points.at(i).y = leftPc_points.col(i)[1];
+        leftPC->points.at(i).z = leftPc_points.col(i)[2];
+
+        rightPC->points.at(i).x = rightPc_points.col(i)[0];
+        rightPC->points.at(i).y = rightPc_points.col(i)[1];
+        rightPC->points.at(i).z = rightPc_points.col(i)[2];
+      }
+      pcl::registration::TransformationEstimationSVD<pcl::PointXYZ,
+                                                     pcl::PointXYZ>
+          TESVD;
+      pcl::registration::TransformationEstimationSVD<
+          pcl::PointXYZ, pcl::PointXYZ>::Matrix4 transformation2;
+      TESVD.estimateRigidTransformation(*leftPC, *rightPC, transformation2);
+
+      std::cout << transformation2 << std::endl;
       key_press = " ";
     }
 
