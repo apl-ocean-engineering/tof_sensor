@@ -32,8 +32,8 @@ class PointcloudExtrinsic {
   PointCloudT cloudLeft;
   PointCloudT cloudRight;
 
-  Eigen::MatrixXf leftPc_ponts;
-  Eigen::MatrixXf rightPc_ponts;
+  Eigen::MatrixXf leftPc_points;
+  Eigen::MatrixXf rightPc_points;
   bool update_left;
   bool update_right;
 

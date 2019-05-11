@@ -38,6 +38,7 @@ void PointcloudExtrinsic::points3D_callbackLeft(
     Eigen::Vector4f x_(x, y, z, 1.0);
     leftPc_points.col(leftPc_points.cols() - 1) = x_;
   }
+  std::cout << "Left Point size: " << leftPc_points.cols() << std::endl;
 }
 
 void PointcloudExtrinsic::points3D_callbackRight(
@@ -57,6 +58,7 @@ void PointcloudExtrinsic::points3D_callbackRight(
     Eigen::Vector4f x_(x, y, z, 1.0);
     rightPc_points.col(rightPc_points.cols() - 1) = x_;
   }
+  std::cout << "Right Point size: " << rightPc_points.cols() << std::endl;
 }
 
 void PointcloudExtrinsic::keyboard_callback(
@@ -179,15 +181,20 @@ void PointcloudExtrinsic::run() {
                                        leftPc_points.cols() - 1);
       rightPc_points.conservativeResize(rightPc_points.rows(),
                                         rightPc_points.cols() - 1);
+      std::cout << "Left Point size: " << leftPc_points.cols() << std::endl;
+      std::cout << "Right Point size: " << rightPc_points.cols() << std::endl;
       ROS_INFO("POINT REMOVED");
       key_press = " ";
     }
     // std::cout << key_press << std::endl;
     if (key_press == "f") {
+
       PointCloudT::Ptr leftPC(new PointCloudT);
       leftPC->points.resize(leftPc_points.cols());
       PointCloudT::Ptr rightPC(new PointCloudT);
       rightPC->points.resize(rightPc_points.cols());
+      std::cout << "Left Point size: " << leftPc_points.cols() << std::endl;
+      std::cout << "Right Point size: " << rightPc_points.cols() << std::endl;
       for (int i = 0; i < rightPc_points.cols(); ++i) {
         leftPC->points.at(i).x = leftPc_points.col(i)[0];
         leftPC->points.at(i).y = leftPc_points.col(i)[1];
